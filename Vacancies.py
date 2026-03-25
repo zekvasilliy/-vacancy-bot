@@ -91,7 +91,8 @@ SITE_URLS = {
     ],
 
     "glorri": "https://jobs.glorri.com/?jobFunctions=legal-services",
-    "smartjob": "https://smartjob.az/index.php/vacancies?job_category_id%5B%5D=127",
+    "smartjob": "https://smartjob.az/vacancies?job_category_id%5B%5D=127",
+    "smartjob_channel": "https://t.me/s/smartjobaz",
     "azvak": "https://azvak.az/vezifeler/huquqsunas/134",
     "hellojob": "https://www.hellojob.az/is-elanlari/huquq",
 }
@@ -548,37 +549,83 @@ def parse_glorri() -> List[Vacancy]:
 
 
 def parse_smartjob() -> List[Vacancy]:
-    html_text = fetch_html(SITE_URLS["smartjob"])
-    if not html_text:
-        return []
-
     vacancies: List[Vacancy] = []
     seen = set()
+    detail_urls = []
 
-    # 1) Берем ссылки на вакансии прямо из сырого HTML, а не через узкие CSS-селекторы
-    raw_links = re.findall(
-        r'href=["\\\']([^"\\\']*?/index\.php/vacancy/\d+[^"\\\']*)["\\\']',
-        html_text,
-        flags=re.IGNORECASE,
-    )
+    def add_detail_url(url: str):
+        if not url:
+            return
+        url = url.strip()
 
-    # Иногда href может быть без начального /
-    normalized_links = []
-    for href in raw_links:
-        href = (href or "").strip()
-        if not href:
-            continue
-        full_url = absolute_url("https://smartjob.az", href)
-        if full_url not in normalized_links:
-            normalized_links.append(full_url)
+        if url.startswith("//"):
+            url = "https:" + url
+        elif url.startswith("/"):
+            url = "https://smartjob.az" + url
+        elif url.startswith("vacancy/"):
+            url = "https://smartjob.az/" + url
+        elif url.startswith("index.php/vacancy/"):
+            url = "https://smartjob.az/" + url
 
-    logger.info("SMARTJOB DETAIL URLS FOUND %s", len(normalized_links))
-    for url in normalized_links[:20]:
+        url = url.replace("http://", "https://")
+        url = url.replace("https://www.smartjob.az", "https://smartjob.az")
+
+        if "smartjob.az" not in url:
+            return
+        if "/vacancy/" not in url and "/index.php/vacancy/" not in url:
+            return
+
+        if url not in detail_urls:
+            detail_urls.append(url)
+
+    def extract_urls_from_html(raw_html: str):
+        if not raw_html:
+            return
+
+        patterns = [
+            r'href=["\'](https?://smartjob\.az/(?:index\.php/)?vacancy/[^"\']+)["\']',
+            r'href=["\'](/(?:index\.php/)?vacancy/[^"\']+)["\']',
+            r'(https?://smartjob\.az/(?:index\.php/)?vacancy/\d+[A-Za-z0-9\-_./%]*)',
+            r'(/(?:index\.php/)?vacancy/\d+[A-Za-z0-9\-_./%]*)',
+        ]
+
+        for pattern in patterns:
+            for match in re.findall(pattern, raw_html, flags=re.IGNORECASE):
+                add_detail_url(match)
+
+    list_html = fetch_html(SITE_URLS["smartjob"])
+    if list_html:
+        extract_urls_from_html(list_html)
+
+    channel_html = fetch_html(SITE_URLS["smartjob_channel"])
+    if channel_html:
+        extract_urls_from_html(channel_html)
+
+    logger.info("SMARTJOB DETAIL URLS FOUND %s", len(detail_urls))
+    for url in detail_urls[:30]:
         logger.info("SMARTJOB DETAIL URL %s", url)
 
-    def parse_smartjob_detail(detail_url: str) -> Optional[Vacancy]:
-        detail_html = fetch_html(detail_url)
+    def fetch_smartjob_detail(url: str) -> Optional[str]:
+        html_text = fetch_html(url)
+        if html_text:
+            return html_text
+
+        alt_url = None
+        if "/vacancy/" in url and "/index.php/vacancy/" not in url:
+            alt_url = url.replace("/vacancy/", "/index.php/vacancy/")
+        elif "/index.php/vacancy/" in url:
+            alt_url = url.replace("/index.php/vacancy/", "/vacancy/")
+
+        if alt_url:
+            logger.info("SMARTJOB TRY ALT URL %s", alt_url)
+            return fetch_html(alt_url)
+
+        return None
+
+    def parse_detail_page(detail_url: str) -> Optional[Vacancy]:
+        detail_html = fetch_smartjob_detail(detail_url)
         if not detail_html:
+            logger.info("SMARTJOB DETAIL FAILED %s", detail_url)
             return None
 
         soup = BeautifulSoup(detail_html, "html.parser")
@@ -587,40 +634,43 @@ def parse_smartjob() -> List[Vacancy]:
         title = None
         published_date = None
 
-        # 2) Сначала пытаемся взять title из h1-h4
         for tag_name in ["h1", "h2", "h3", "h4"]:
-            tag = soup.find(tag_name)
-            if tag:
+            tags = soup.find_all(tag_name)
+            for tag in tags:
                 candidate = clean_title(tag.get_text(" ", strip=True))
                 if candidate and not looks_like_noise(candidate):
                     title = candidate
                     break
+            if title:
+                break
 
-        # 3) Если не нашли, берем из title страницы
         if not title and soup.title:
             page_title = clean_title(soup.title.get_text(" ", strip=True))
             if " - " in page_title:
                 title = clean_title(page_title.split(" - ")[0])
+            else:
+                title = page_title
 
-        # 4) Дата публикации
         m = re.search(r"\b(\d{2}\.\d{2}\.\d{4})\b", page_text)
         if m:
             published_date = parse_date_loose(m.group(1))
 
         if not title:
+            logger.info("SMARTJOB NO TITLE %s", detail_url)
             return None
 
         if looks_like_noise(title):
+            logger.info("SMARTJOB TITLE NOISE %s | %s", title, detail_url)
             return None
 
         if not is_legal_vacancy(title):
+            logger.info("SMARTJOB TITLE SKIPPED %s | %s", title, detail_url)
             return None
 
         return Vacancy("smartjob", title, detail_url, published_date)
 
-    # 5) Идем по detail page, это и есть главный фикс
-    for detail_url in normalized_links:
-        item = parse_smartjob_detail(detail_url)
+    for detail_url in detail_urls:
+        item = parse_detail_page(detail_url)
         if not item:
             continue
 
