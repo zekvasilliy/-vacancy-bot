@@ -43,7 +43,6 @@ SITE_LABELS = {
     "jobsearch": "JobSearch",
     "busy": "Busy.az",
     "glorri": "Glorri",
-    "smartjob": "SmartJob",
     "azvak": "Azvak",
     "hellojob": "HelloJob",
 }
@@ -91,8 +90,6 @@ SITE_URLS = {
     ],
 
     "glorri": "https://jobs.glorri.com/?jobFunctions=legal-services",
-    "smartjob": "https://smartjob.az/vacancies?job_category_id%5B%5D=127",
-    "smartjob_channel": "https://t.me/s/smartjobaz",
     "azvak": "https://azvak.az/vezifeler/huquqsunas/134",
     "hellojob": "https://www.hellojob.az/is-elanlari/huquq",
 }
@@ -445,8 +442,7 @@ def parse_jobsearch() -> List[Vacancy]:
 
 def parse_busy_page(url: str) -> List[Vacancy]:
     """
-    Busy.az now often renders profession/category pages via JS on busy.az,
-    so the raw HTML there contains only 'Yüklənir...'.
+    Busy.az often returns only a JS shell on busy.az pages.
     We therefore parse the static CDN mirror instead:
     https://cdn.busy.az/professions/...
     """
@@ -527,7 +523,6 @@ def parse_busy_page(url: str) -> List[Vacancy]:
         if raw and is_legal_vacancy(raw):
             return raw
 
-        # fallback from vacancy slug
         m = re.search(r"/vacancy/\d+/([^/?#]+)", fallback_url)
         if m:
             slug_title = slug_to_title(m.group(1))
@@ -536,7 +531,6 @@ def parse_busy_page(url: str) -> List[Vacancy]:
 
         return raw
 
-    # main: parse vacancy anchors from static CDN page
     for a in soup.select('a[href*="/vacancy/"]'):
         href = (a.get("href") or "").strip()
         if not href:
@@ -554,12 +548,8 @@ def parse_busy_page(url: str) -> List[Vacancy]:
         if not is_legal_vacancy(title):
             continue
 
-        published_date = None
-
-        # date from anchor text
         published_date = extract_date_from_text(a.get_text(" ", strip=True))
 
-        # date from nearby container text
         if not published_date:
             containers = []
             if a.parent:
@@ -600,11 +590,9 @@ def parse_busy() -> List[Vacancy]:
         seen_pages.add(page_url)
         items.extend(parse_busy_page(page_url))
 
-    # стартовые profession-страницы
     for base_url in SITE_URLS["busy_professions"]:
         add_page(base_url)
 
-        # пробуем вытащить пагинацию с CDN-версии
         source_url = base_url.replace("https://busy.az/", "https://cdn.busy.az/")
         html_text = fetch_html(source_url)
         if not html_text:
@@ -618,7 +606,6 @@ def parse_busy() -> List[Vacancy]:
             if not href:
                 continue
 
-            # только страницы той же profession-ленты
             if "/professions/" not in href:
                 continue
             if "page=" not in href:
@@ -636,8 +623,6 @@ def parse_busy() -> List[Vacancy]:
             if href not in page_links:
                 page_links.append(href)
 
-        # ограничим разумно, чтобы не убить Render
-        # обычно хватает первых страниц, где висят свежие вакансии
         def page_num(u: str) -> int:
             m = re.search(r"[?&]page=(\d+)", u)
             return int(m.group(1)) if m else 1
@@ -649,6 +634,7 @@ def parse_busy() -> List[Vacancy]:
 
     logger.info("BUSY TOTAL FOUND %s", len(items))
     return deduplicate_vacancies(items)
+
 
 def parse_glorri() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["glorri"])
@@ -678,169 +664,7 @@ def parse_glorri() -> List[Vacancy]:
         vacancies.append(Vacancy("glorri", title, url, published_date))
 
     return deduplicate_vacancies(vacancies)
-
-
-def parse_smartjob() -> List[Vacancy]:
-    html_text = fetch_html(SITE_URLS["smartjob"])
-    if not html_text:
-        logger.info("SMARTJOB LIST FETCH FAILED")
-        return []
-
-    soup = BeautifulSoup(html_text, "html.parser")
-    vacancies: List[Vacancy] = []
-    seen = set()
-
-    def normalize_smartjob_url(href: str) -> str:
-        url = (href or "").strip()
-        if not url:
-            return ""
-
-        if url.startswith("//"):
-            url = "https:" + url
-        elif url.startswith("/"):
-            url = absolute_url("https://smartjob.az", url)
-        elif not url.startswith("http://") and not url.startswith("https://"):
-            url = absolute_url("https://smartjob.az", url)
-
-        url = url.replace("http://", "https://")
-        url = url.replace("https://www.smartjob.az", "https://smartjob.az")
-        return url
-
-    def extract_date_from_context(anchor) -> Optional[date]:
-        contexts = []
-        node = anchor
-
-        for _ in range(5):
-            if not node:
-                break
-            text = clean_title(node.get_text(" ", strip=True))
-            if text:
-                contexts.append(text)
-            node = node.parent
-
-        full_context = " ".join(contexts)
-
-        m = re.search(r"Yerləşdirilib\s*(\d{2}\.\d{2}\.\d{4})", full_context, re.IGNORECASE)
-        if m:
-            return parse_date_loose(m.group(1))
-
-        return extract_dates_from_text(full_context)
-
-    def enrich_from_detail(url: str, current_title: str, current_date: Optional[date]):
-        detail_html = fetch_html(url)
-        if not detail_html:
-            return current_title, current_date
-
-        detail_soup = BeautifulSoup(detail_html, "html.parser")
-        detail_text = clean_title(detail_soup.get_text(" ", strip=True))
-
-        better_title = current_title
-        for tag_name in ["h1", "h2", "h3", "h4"]:
-            tag = detail_soup.find(tag_name)
-            if tag:
-                candidate = clean_title(tag.get_text(" ", strip=True))
-                if candidate and not looks_like_noise(candidate):
-                    better_title = candidate
-                    break
-
-        better_date = current_date
-        if not better_date:
-            m = re.search(r"Yerləşdirilib\s*(\d{2}\.\d{2}\.\d{4})", detail_text, re.IGNORECASE)
-            if m:
-                better_date = parse_date_loose(m.group(1))
-            else:
-                m = re.search(r"\b(\d{2}\.\d{2}\.\d{4})\b", detail_text)
-                if m:
-                    better_date = parse_date_loose(m.group(1))
-
-        return better_title, better_date
-
-    # Основной и самый надежный путь: берем вакансии прямо со страницы списка
-    for a in soup.select('a[href*="/vacancy/"], a[href*="/index.php/vacancy/"]'):
-        href = (a.get("href") or "").strip()
-        title = clean_title(a.get_text(" ", strip=True))
-
-        if not href or not title:
-            continue
-        if looks_like_noise(title):
-            continue
-        if not is_legal_vacancy(title):
-            continue
-
-        url = normalize_smartjob_url(href)
-        if not url:
-            continue
-        if "smartjob.az" not in url:
-            continue
-        if "/vacancy/" not in url and "/index.php/vacancy/" not in url:
-            continue
-
-        published_date = extract_date_from_context(a)
-
-        # если дата не взялась со списка — добираем из detail page
-        if not published_date:
-            title, published_date = enrich_from_detail(url, title, published_date)
-
-        key = (normalize_text(title), url)
-        if key in seen:
-            continue
-
-        seen.add(key)
-        vacancies.append(Vacancy("smartjob", title, url, published_date))
-
-    # fallback: если список по какой-то причине дал 0, пробуем telegram-канал как запасной источник ссылок
-    if not vacancies:
-        channel_html = fetch_html(SITE_URLS["smartjob_channel"])
-        if channel_html:
-            detail_urls = []
-
-            patterns = [
-                r'href=["\'](https?://smartjob\.az/(?:index\.php/)?vacancy/[^"\']+)["\']',
-                r'href=["\'](/(?:index\.php/)?vacancy/[^"\']+)["\']',
-                r'(https?://smartjob\.az/(?:index\.php/)?vacancy/\d+[A-Za-z0-9\-_./%]*)',
-                r'(/(?:index\.php/)?vacancy/\d+[A-Za-z0-9\-_./%]*)',
-            ]
-
-            def add_detail_url(raw_url: str):
-                url = normalize_smartjob_url(raw_url)
-                if not url:
-                    return
-                if "smartjob.az" not in url:
-                    return
-                if "/vacancy/" not in url and "/index.php/vacancy/" not in url:
-                    return
-                if url not in detail_urls:
-                    detail_urls.append(url)
-
-            for pattern in patterns:
-                for match in re.findall(pattern, channel_html, flags=re.IGNORECASE):
-                    add_detail_url(match)
-
-            for url in detail_urls:
-                title, published_date = enrich_from_detail(url, "", None)
-
-                if not title:
-                    continue
-                if looks_like_noise(title):
-                    continue
-                if not is_legal_vacancy(title):
-                    continue
-
-                key = (normalize_text(title), url)
-                if key in seen:
-                    continue
-
-                seen.add(key)
-                vacancies.append(Vacancy("smartjob", title, url, published_date))
-
-    logger.info("SMARTJOB FOUND %s", len(vacancies))
-    for item in vacancies[:20]:
-        logger.info("SMARTJOB ITEM %s | %s | %s", item.title, item.url, item.published_date)
-
-    return deduplicate_vacancies(vacancies)
-
-
-def parse_azvak() -> List[Vacancy]:
+    def parse_azvak() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["azvak"])
     if not html_text:
         return []
@@ -937,7 +761,6 @@ def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
         "jobsearch": parse_jobsearch(),
         "busy": parse_busy(),
         "glorri": parse_glorri(),
-        "smartjob": parse_smartjob(),
         "azvak": parse_azvak(),
         "hellojob": parse_hellojob(),
     }
@@ -967,8 +790,8 @@ def get_main_menu_keyboard():
 def get_old_jobs_keyboard():
     keyboard = [
         ["JobSearch", "Busy.az"],
-        ["Glorri", "SmartJob"],
-        ["Azvak", "HelloJob"],
+        ["Glorri", "Azvak"],
+        ["HelloJob"],
         ["Start", "Назад", "Отмена"],
     ]
     return ReplyKeyboardMarkup(
@@ -1141,7 +964,6 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
         "JobSearch": "jobsearch",
         "Busy.az": "busy",
         "Glorri": "glorri",
-        "SmartJob": "smartjob",
         "Azvak": "azvak",
         "HelloJob": "hellojob",
     }
