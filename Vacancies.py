@@ -664,6 +664,7 @@ def parse_glorri() -> List[Vacancy]:
         vacancies.append(Vacancy("glorri", title, url, published_date))
 
     return deduplicate_vacancies(vacancies)
+    
     def parse_azvak() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["azvak"])
     if not html_text:
