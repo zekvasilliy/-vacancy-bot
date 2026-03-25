@@ -80,8 +80,16 @@ KEYWORDS = [
 
 SITE_URLS = {
     "jobsearch": "https://classic.jobsearch.az/vacancies?category=1375",
-    "busy_category": "https://busy.az/category/huquq",
-    "busy_profession": "https://busy.az/dp/huquqsunas-vakansiyalar",
+
+    "busy_professions": [
+        "https://busy.az/professions/huquqsunas",
+        "https://busy.az/professions/huquq-meslehetcisi",
+        "https://busy.az/professions/huquq-sobesinin-mutexessisi",
+        "https://busy.az/professions/lawyer",
+        "https://busy.az/professions/bas-huquqsunas",
+        "https://busy.az/professions/huquqsunas-komekcisi",
+    ],
+
     "glorri": "https://jobs.glorri.com/?jobFunctions=legal-services",
     "smartjob": "https://smartjob.az/index.php/vacancies?job_category_id%5B%5D=127",
     "azvak": "https://azvak.az/vezifeler/huquqsunas/134",
@@ -441,44 +449,71 @@ def parse_busy_page(url: str) -> List[Vacancy]:
 
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
+    seen = set()
 
-    for a in soup.select("a[href]"):
-        href = a.get("href") or ""
+    page_text = clean_title(soup.get_text(" ", strip=True))
+
+    def extract_busy_date_near_title(title: str) -> Optional[date]:
+        escaped_title = re.escape(title)
+
+        patterns = [
+            rf"{escaped_title}.*?(bugün|dünən|\d+\s+gün əvvəl)",
+            rf"{escaped_title}.*?(\d{{2}}[./-]\d{{2}}[./-]\d{{4}})",
+            rf"{escaped_title}.*?Published[:\s]+(\d{{4}}\s*M\d{{2}}\s*\d{{2}})",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, page_text, re.IGNORECASE)
+            if match:
+                raw = match.group(1).strip().lower()
+
+                if raw == "bugün":
+                    return date.today()
+                if raw == "dünən":
+                    return date.today() - timedelta(days=1)
+
+                m = re.search(r"(\d+)\s+gün əvvəl", raw)
+                if m:
+                    return date.today() - timedelta(days=int(m.group(1)))
+
+                parsed = parse_date_loose(raw)
+                if parsed:
+                    return parsed
+
+        return None
+
+    for a in soup.select('a[href*="/vacancy/"]'):
+        href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
 
         if not href or not title:
             continue
-
-        if not (
-            "/vacancies/" in href
-            or "/jobs/" in href
-            or "/dp/" in href
-            or "/profession" in href
-            or "/company" in href
-        ):
-            if not is_legal_vacancy(title):
-                continue
-
-        if looks_like_noise(title) or not is_legal_vacancy(title):
+        if looks_like_noise(title):
+            continue
+        if not is_legal_vacancy(title):
             continue
 
         full_url = absolute_url("https://busy.az", href)
-        context = ""
-        if a.parent:
-            context = clean_title(a.parent.get_text(" ", strip=True))
-            if a.parent.parent:
-                context += " " + clean_title(a.parent.parent.get_text(" ", strip=True))
+        published_date = extract_busy_date_near_title(title)
 
-        published_date = extract_dates_from_text(context)
+        key = (normalize_text(title), full_url)
+        if key in seen:
+            continue
+
         vacancies.append(Vacancy("busy", title, full_url, published_date))
+        seen.add(key)
+
+    logger.info("BUSY PAGE %s FOUND %s", url, len(vacancies))
+    for item in vacancies[:10]:
+        logger.info("BUSY ITEM %s | %s | %s", item.title, item.url, item.published_date)
 
     return deduplicate_vacancies(vacancies)
 
 
 def parse_busy() -> List[Vacancy]:
     items = []
-    items.extend(parse_busy_page(SITE_URLS["busy_category"]))
-    items.extend(parse_busy_page(SITE_URLS["busy_profession"]))
+    for url in SITE_URLS["busy_professions"]:
+        items.extend(parse_busy_page(url))
     return deduplicate_vacancies(items)
 
 
@@ -521,43 +556,55 @@ def parse_smartjob() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
     seen = set()
 
-    def extract_smartjob_date(anchor) -> Optional[date]:
-        containers = []
-        node = anchor
-        for _ in range(6):
-            node = getattr(node, "parent", None)
-            if not node:
-                break
-            containers.append(node)
+    def extract_smartjob_date_from_context(text: str) -> Optional[date]:
+        text = clean_title(text)
 
-        for container in containers:
-            context = clean_title(container.get_text(" ", strip=True))
+        m = re.search(r"Yerləşdirilib\s*(\d{2}\.\d{2}\.\d{4})", text, re.IGNORECASE)
+        if m:
+            parsed = parse_date_loose(m.group(1))
+            if parsed:
+                return parsed
 
-            m = re.search(r"Yerləşdirilib\s*(\d{2}\.\d{2}\.\d{4})", context, re.IGNORECASE)
-            if m:
-                parsed = parse_date_loose(m.group(1))
-                if parsed:
-                    return parsed
-
-            m = re.search(r"(\d{2}\.\d{2}\.\d{4})", context)
-            if m:
-                parsed = parse_date_loose(m.group(1))
-                if parsed:
-                    return parsed
+        m = re.search(r"(\d{2}\.\d{2}\.\d{4})", text)
+        if m:
+            parsed = parse_date_loose(m.group(1))
+            if parsed:
+                return parsed
 
         return None
 
-    for a in soup.select('a[href*="/index.php/vacancy/"]'):
+    for a in soup.select("a[href]"):
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
 
         if not href or not title:
             continue
-        if looks_like_noise(title) or not is_legal_vacancy(title):
+
+        href_lower = href.lower()
+
+        if "vacancy/" not in href_lower:
+            continue
+
+        if looks_like_noise(title):
+            continue
+
+        if not is_legal_vacancy(title):
             continue
 
         url = absolute_url("https://smartjob.az", href)
-        published_date = extract_smartjob_date(a)
+        published_date = None
+
+        node = a
+        for _ in range(8):
+            node = getattr(node, "parent", None)
+            if not node:
+                break
+
+            context = clean_title(node.get_text(" ", strip=True))
+            parsed = extract_smartjob_date_from_context(context)
+            if parsed:
+                published_date = parsed
+                break
 
         key = (normalize_text(title), url)
         if key in seen:
@@ -566,7 +613,10 @@ def parse_smartjob() -> List[Vacancy]:
         vacancies.append(Vacancy("smartjob", title, url, published_date))
         seen.add(key)
 
-    logger.info("SMARTJOB FOUND %s", len(vacancies))
+    logger.info("SMARTJOB RAW FOUND %s", len(vacancies))
+    for item in vacancies[:20]:
+        logger.info("SMARTJOB ITEM %s | %s | %s", item.title, item.url, item.published_date)
+
     return deduplicate_vacancies(vacancies)
 
 
