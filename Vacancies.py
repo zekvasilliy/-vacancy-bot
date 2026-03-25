@@ -79,7 +79,7 @@ KEYWORDS = [
 ]
 
 SITE_URLS = {
-    "jobsearch": "https://classic.jobsearch.az/vacancies",
+    "jobsearch": "https://classic.jobsearch.az/vacancies?category=1375",
     "busy_category": "https://busy.az/category/huquq",
     "busy_profession": "https://busy.az/dp/huquqsunas-vakansiyalar",
     "glorri": "https://jobs.glorri.com/?jobFunctions=legal-services",
@@ -164,7 +164,7 @@ def save_vacancies(vacancies: List[Vacancy]) -> int:
     return inserted
 
 
-def get_recent_vacancies(limit: int = 200) -> List[Dict]:
+def get_recent_vacancies(limit: int = 1000) -> List[Dict]:
     border = date.today() - timedelta(days=60)
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -192,7 +192,7 @@ def get_recent_vacancies(limit: int = 200) -> List[Dict]:
     ]
 
 
-def get_recent_vacancies_by_site(site: str, limit: int = 200) -> List[Dict]:
+def get_recent_vacancies_by_site(site: str, limit: int = 1000) -> List[Dict]:
     border = date.today() - timedelta(days=60)
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -403,11 +403,15 @@ def parse_jobsearch() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
     seen = set()
 
-    for a in soup.select('a[href*="/vacancies/"]'):
-        href = a.get("href") or ""
+    row_links = soup.select('a[href*="/vacancies/"]')
+
+    for a in row_links:
+        href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
 
         if not href or not title:
+            continue
+        if href == "/vacancies":
             continue
         if looks_like_noise(title):
             continue
@@ -415,11 +419,8 @@ def parse_jobsearch() -> List[Vacancy]:
             continue
 
         url = absolute_url("https://classic.jobsearch.az", href)
-        key = (normalize_text(title), url)
-        if key in seen:
-            continue
-
         published_date = None
+
         containers = []
         if a.parent:
             containers.append(a.parent)
@@ -429,16 +430,21 @@ def parse_jobsearch() -> List[Vacancy]:
             containers.append(a.parent.parent.parent)
 
         for container in containers:
-            text = clean_title(container.get_text(" ", strip=True))
-            published_date = parse_date_loose(text)
-            if published_date:
+            context = clean_title(container.get_text(" ", strip=True))
+            parsed = extract_dates_from_text(context)
+            if parsed:
+                published_date = parsed
                 break
+
+        key = (normalize_text(title), url)
+        if key in seen:
+            continue
 
         vacancies.append(Vacancy("jobsearch", title, url, published_date))
         seen.add(key)
 
     logger.info("JOBSEARCH RAW FOUND %s", len(vacancies))
-    for item in vacancies[:15]:
+    for item in vacancies[:20]:
         logger.info("JOBSEARCH ITEM %s | %s", item.title, item.url)
 
     return deduplicate_vacancies(vacancies)
@@ -805,7 +811,7 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     inserted = save_vacancies(all_vacancies)
     cleanup_old_vacancies()
 
-    recent = get_recent_vacancies(limit=200)
+    recent = get_recent_vacancies(limit=1000)
     text = format_vacancy_lines_html(recent, "Свежих вакансий пока не найдено.")
 
     header = (
@@ -884,7 +890,7 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
         return OLD_JOBS_MENU
 
     site = map_text_to_site[text]
-    rows = get_recent_vacancies_by_site(site, limit=200)
+    rows = get_recent_vacancies_by_site(site, limit=1000)
     body = format_vacancy_lines_html(rows, f"По сайту {text} вакансий за последние 2 месяца пока нет.")
 
     chunks = split_long_message(body)
