@@ -444,67 +444,145 @@ def parse_jobsearch() -> List[Vacancy]:
 
 
 def parse_busy_page(url: str) -> List[Vacancy]:
-    html_text = fetch_html(url)
+    """
+    Busy.az now often renders profession/category pages via JS on busy.az,
+    so the raw HTML there contains only 'Yüklənir...'.
+    We therefore parse the static CDN mirror instead:
+    https://cdn.busy.az/professions/...
+    """
+    source_url = url.replace("https://busy.az/", "https://cdn.busy.az/")
+    html_text = fetch_html(source_url)
     if not html_text:
+        logger.info("BUSY FETCH FAILED %s", source_url)
         return []
 
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     seen = set()
 
-    page_text = clean_title(soup.get_text(" ", strip=True))
+    def normalize_busy_url(href: str) -> str:
+        href = (href or "").strip()
+        if not href:
+            return ""
 
-    def extract_busy_date_near_title(title: str) -> Optional[date]:
-        escaped_title = re.escape(title)
+        if href.startswith("//"):
+            href = "https:" + href
+        elif href.startswith("/"):
+            href = absolute_url("https://busy.az", href)
+        elif href.startswith("https://cdn.busy.az/"):
+            href = href.replace("https://cdn.busy.az/", "https://busy.az/")
+        elif href.startswith("http://cdn.busy.az/"):
+            href = href.replace("http://cdn.busy.az/", "https://busy.az/")
+        elif href.startswith("http://busy.az/"):
+            href = href.replace("http://busy.az/", "https://busy.az/")
+        elif not href.startswith("http://") and not href.startswith("https://"):
+            href = absolute_url("https://busy.az", href)
 
-        patterns = [
-            rf"{escaped_title}.*?(bugün|dünən|\d+\s+gün əvvəl)",
-            rf"{escaped_title}.*?(\d{{2}}[./-]\d{{2}}[./-]\d{{4}})",
-            rf"{escaped_title}.*?Published[:\s]+(\d{{4}}\s*M\d{{2}}\s*\d{{2}})",
-        ]
+        href = href.replace("https://www.busy.az", "https://busy.az")
+        href = href.replace("http://www.busy.az", "https://busy.az")
+        return href
 
-        for pattern in patterns:
-            match = re.search(pattern, page_text, re.IGNORECASE)
-            if match:
-                raw = match.group(1).strip().lower()
+    def slug_to_title(slug: str) -> str:
+        slug = clean_title(slug.replace("-", " ").replace("_", " "))
+        if not slug:
+            return ""
+        words = slug.split()
+        return " ".join(w.capitalize() if len(w) > 2 else w.upper() for w in words)
 
-                if raw == "bugün":
-                    return date.today()
-                if raw == "dünən":
-                    return date.today() - timedelta(days=1)
+    def extract_date_from_text(text: str) -> Optional[date]:
+        text = clean_title(text).lower()
 
-                m = re.search(r"(\d+)\s+gün əvvəl", raw)
-                if m:
-                    return date.today() - timedelta(days=int(m.group(1)))
+        if "bugün" in text:
+            return date.today()
+        if "dünən" in text:
+            return date.today() - timedelta(days=1)
 
-                parsed = parse_date_loose(raw)
-                if parsed:
-                    return parsed
+        m = re.search(r"(\d+)\s+gün əvvəl", text)
+        if m:
+            return date.today() - timedelta(days=int(m.group(1)))
+
+        m = re.search(r"(\d{2}[./-]\d{2}[./-]\d{4})", text)
+        if m:
+            parsed = parse_date_loose(m.group(1))
+            if parsed:
+                return parsed
+
+        m = re.search(r"Published[:\s]+(\d{4}\s*M\d{2}\s*\d{2})", text, re.IGNORECASE)
+        if m:
+            parsed = parse_date_loose(m.group(1))
+            if parsed:
+                return parsed
 
         return None
 
+    def extract_title_from_anchor(anchor, fallback_url: str) -> str:
+        raw = clean_title(anchor.get_text(" ", strip=True))
+        if raw:
+            raw = re.sub(r"\bMüraciət et\b", "", raw, flags=re.IGNORECASE)
+            raw = re.sub(r"\b(son tarix|deadline)\b.*$", "", raw, flags=re.IGNORECASE)
+            raw = re.sub(r"\b(bugün|dünən|\d+\s+gün əvvəl)\b.*$", "", raw, flags=re.IGNORECASE)
+            raw = re.sub(r"\b\d{2}[./-]\d{2}[./-]\d{4}\b.*$", "", raw, flags=re.IGNORECASE)
+            raw = clean_title(raw)
+
+        if raw and is_legal_vacancy(raw):
+            return raw
+
+        # fallback from vacancy slug
+        m = re.search(r"/vacancy/\d+/([^/?#]+)", fallback_url)
+        if m:
+            slug_title = slug_to_title(m.group(1))
+            if slug_title:
+                return slug_title
+
+        return raw
+
+    # main: parse vacancy anchors from static CDN page
     for a in soup.select('a[href*="/vacancy/"]'):
         href = (a.get("href") or "").strip()
-        title = clean_title(a.get_text(" ", strip=True))
+        if not href:
+            continue
 
-        if not href or not title:
+        full_url = normalize_busy_url(href)
+        if not full_url or "/vacancy/" not in full_url:
+            continue
+
+        title = extract_title_from_anchor(a, full_url)
+        if not title:
             continue
         if looks_like_noise(title):
             continue
         if not is_legal_vacancy(title):
             continue
 
-        full_url = absolute_url("https://busy.az", href)
-        published_date = extract_busy_date_near_title(title)
+        published_date = None
+
+        # date from anchor text
+        published_date = extract_date_from_text(a.get_text(" ", strip=True))
+
+        # date from nearby container text
+        if not published_date:
+            containers = []
+            if a.parent:
+                containers.append(a.parent)
+            if a.parent and a.parent.parent:
+                containers.append(a.parent.parent)
+            if a.parent and a.parent.parent and a.parent.parent.parent:
+                containers.append(a.parent.parent.parent)
+
+            for container in containers:
+                ctx = clean_title(container.get_text(" ", strip=True))
+                published_date = extract_date_from_text(ctx)
+                if published_date:
+                    break
 
         key = (normalize_text(title), full_url)
         if key in seen:
             continue
 
-        vacancies.append(Vacancy("busy", title, full_url, published_date))
         seen.add(key)
+        vacancies.append(Vacancy("busy", title, full_url, published_date))
 
-    logger.info("BUSY PAGE %s FOUND %s", url, len(vacancies))
+    logger.info("BUSY PAGE %s FOUND %s", source_url, len(vacancies))
     for item in vacancies[:10]:
         logger.info("BUSY ITEM %s | %s | %s", item.title, item.url, item.published_date)
 
@@ -512,11 +590,65 @@ def parse_busy_page(url: str) -> List[Vacancy]:
 
 
 def parse_busy() -> List[Vacancy]:
-    items = []
-    for url in SITE_URLS["busy_professions"]:
-        items.extend(parse_busy_page(url))
-    return deduplicate_vacancies(items)
+    items: List[Vacancy] = []
+    seen_pages = set()
 
+    def add_page(page_url: str):
+        page_url = page_url.replace("https://cdn.busy.az/", "https://busy.az/")
+        if page_url in seen_pages:
+            return
+        seen_pages.add(page_url)
+        items.extend(parse_busy_page(page_url))
+
+    # стартовые profession-страницы
+    for base_url in SITE_URLS["busy_professions"]:
+        add_page(base_url)
+
+        # пробуем вытащить пагинацию с CDN-версии
+        source_url = base_url.replace("https://busy.az/", "https://cdn.busy.az/")
+        html_text = fetch_html(source_url)
+        if not html_text:
+            continue
+
+        soup = BeautifulSoup(html_text, "html.parser")
+
+        page_links = []
+        for a in soup.select('a[href]'):
+            href = (a.get("href") or "").strip()
+            if not href:
+                continue
+
+            # только страницы той же profession-ленты
+            if "/professions/" not in href:
+                continue
+            if "page=" not in href:
+                continue
+
+            if href.startswith("/"):
+                href = absolute_url("https://busy.az", href)
+            elif href.startswith("https://cdn.busy.az/"):
+                href = href.replace("https://cdn.busy.az/", "https://busy.az/")
+            elif href.startswith("http://cdn.busy.az/"):
+                href = href.replace("http://cdn.busy.az/", "https://busy.az/")
+            elif not href.startswith("http://") and not href.startswith("https://"):
+                href = absolute_url("https://busy.az", href)
+
+            if href not in page_links:
+                page_links.append(href)
+
+        # ограничим разумно, чтобы не убить Render
+        # обычно хватает первых страниц, где висят свежие вакансии
+        def page_num(u: str) -> int:
+            m = re.search(r"[?&]page=(\d+)", u)
+            return int(m.group(1)) if m else 1
+
+        page_links = sorted(page_links, key=page_num)
+
+        for extra_page in page_links[:12]:
+            add_page(extra_page)
+
+    logger.info("BUSY TOTAL FOUND %s", len(items))
+    return deduplicate_vacancies(items)
 
 def parse_glorri() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["glorri"])
