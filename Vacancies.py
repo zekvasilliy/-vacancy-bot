@@ -2,7 +2,7 @@ import os
 import re
 import logging
 import hashlib
-from datetime import datetime, timedelta, date
+from datetime import timedelta, date
 from typing import List, Dict, Optional
 
 import psycopg
@@ -60,10 +60,12 @@ KEYWORDS = [
     "contract",
     "hüquq üzrə mütəxəssis",
     "hüquq məsləhətçisi",
+    "hüquq",
+    "huquq",
 ]
 
 SITE_URLS = {
-    "jobsearch": "https://jobsearch.az/vacancies",
+    "jobsearch": "https://classic.jobsearch.az/vacancies",
     "busy": "https://busy.az",
     "glorri": "https://jobs.glorri.com",
     "smartjob": "https://smartjob.az",
@@ -291,9 +293,10 @@ def fetch_html(url: str) -> Optional[str]:
         return None
 
 
-# ===== PARSERS =====
-# Эти парсеры сделаны как стартовый каркас. После первого теста вживую
-# HTML-селекторы, скорее всего, придется точечно подправить под каждый сайт.
+def clean_title(title: str) -> str:
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
 
 def parse_jobsearch() -> List[Vacancy]:
     html = fetch_html(SITE_URLS["jobsearch"])
@@ -303,15 +306,48 @@ def parse_jobsearch() -> List[Vacancy]:
     soup = BeautifulSoup(html, "html.parser")
     vacancies: List[Vacancy] = []
 
-    for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+    # На classic.jobsearch.az вакансии выводятся как ссылки /vacancies/<slug>
+    for a in soup.select('a[href*="/vacancies/"]'):
         href = a.get("href") or ""
-        if not title or not href:
+        title = clean_title(a.get_text(" ", strip=True))
+
+        if not href or not title:
             continue
+
+        # Отсеиваем мусор
+        if len(title) < 3:
+            continue
+        if title.lower() in {
+            "latest vacancies",
+            "kateqoriyalar",
+            "şirkətlər",
+            "haqqımızda",
+            "xidmətlər",
+            "əlaqə",
+        }:
+            continue
+
         if not is_legal_vacancy(title):
             continue
-        url = absolute_url("https://jobsearch.az", href)
-        vacancies.append(Vacancy("jobsearch", title, url, None))
+
+        url = absolute_url("https://classic.jobsearch.az", href)
+
+        # Ищем дату рядом с заголовком
+        published_date = None
+        parent = a.parent
+        if parent:
+            parent_text = parent.get_text(" ", strip=True)
+            published_date = parse_date_loose(parent_text)
+
+            # если в parent не нашли, пробуем соседние элементы
+            if not published_date:
+                for sibling in parent.find_all_next(limit=5):
+                    sibling_text = sibling.get_text(" ", strip=True)
+                    published_date = parse_date_loose(sibling_text)
+                    if published_date:
+                        break
+
+        vacancies.append(Vacancy("jobsearch", title, url, published_date))
 
     return deduplicate_vacancies(vacancies)
 
@@ -325,7 +361,7 @@ def parse_busy() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
 
     for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+        title = clean_title(a.get_text(" ", strip=True))
         href = a.get("href") or ""
         if not title or not href:
             continue
@@ -346,7 +382,7 @@ def parse_glorri() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
 
     for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+        title = clean_title(a.get_text(" ", strip=True))
         href = a.get("href") or ""
         if not title or not href:
             continue
@@ -367,7 +403,7 @@ def parse_smartjob() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
 
     for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+        title = clean_title(a.get_text(" ", strip=True))
         href = a.get("href") or ""
         if not title or not href:
             continue
@@ -388,7 +424,7 @@ def parse_azvak() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
 
     for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+        title = clean_title(a.get_text(" ", strip=True))
         href = a.get("href") or ""
         if not title or not href:
             continue
@@ -409,7 +445,7 @@ def parse_hellojob() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
 
     for a in soup.select("a"):
-        title = a.get_text(" ", strip=True)
+        title = clean_title(a.get_text(" ", strip=True))
         href = a.get("href") or ""
         if not title or not href:
             continue
@@ -436,7 +472,7 @@ def deduplicate_vacancies(vacancies: List[Vacancy]) -> List[Vacancy]:
 
 
 def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
-    return {
+    result = {
         "jobsearch": parse_jobsearch(),
         "busy": parse_busy(),
         "glorri": parse_glorri(),
@@ -445,8 +481,11 @@ def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
         "hellojob": parse_hellojob(),
     }
 
+    for site, items in result.items():
+        logger.info("SITE %s FOUND %s", site, len(items))
 
-# ===== KEYBOARDS =====
+    return result
+
 
 def get_main_menu_keyboard():
     keyboard = [
