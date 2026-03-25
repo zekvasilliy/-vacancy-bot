@@ -401,7 +401,7 @@ def parse_jobsearch() -> List[Vacancy]:
 
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
-    seen_titles = set()
+    seen = set()
 
     for a in soup.select('a[href*="/vacancies/"]'):
         href = a.get("href") or ""
@@ -414,29 +414,31 @@ def parse_jobsearch() -> List[Vacancy]:
         if not is_legal_vacancy(title):
             continue
 
-        normalized_title = normalize_text(title)
-        if normalized_title in seen_titles:
+        url = absolute_url("https://classic.jobsearch.az", href)
+        key = (normalize_text(title), url)
+        if key in seen:
             continue
 
-        url = absolute_url("https://classic.jobsearch.az", href)
         published_date = None
-
-        context_parts = []
+        containers = []
         if a.parent:
-            context_parts.append(clean_title(a.parent.get_text(" ", strip=True)))
+            containers.append(a.parent)
         if a.parent and a.parent.parent:
-            context_parts.append(clean_title(a.parent.parent.get_text(" ", strip=True)))
+            containers.append(a.parent.parent)
+        if a.parent and a.parent.parent and a.parent.parent.parent:
+            containers.append(a.parent.parent.parent)
 
-        for part in context_parts:
-            published_date = extract_dates_from_text(part)
+        for container in containers:
+            text = clean_title(container.get_text(" ", strip=True))
+            published_date = parse_date_loose(text)
             if published_date:
                 break
 
         vacancies.append(Vacancy("jobsearch", title, url, published_date))
-        seen_titles.add(normalized_title)
+        seen.add(key)
 
     logger.info("JOBSEARCH RAW FOUND %s", len(vacancies))
-    for item in vacancies[:10]:
+    for item in vacancies[:15]:
         logger.info("JOBSEARCH ITEM %s | %s", item.title, item.url)
 
     return deduplicate_vacancies(vacancies)
@@ -524,7 +526,6 @@ def parse_glorri() -> List[Vacancy]:
     return deduplicate_vacancies(vacancies)
 
 
-# ===== SMARTJOB FIXED =====
 def parse_smartjob() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["smartjob"])
     if not html_text:
@@ -534,13 +535,6 @@ def parse_smartjob() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
     seen_titles = set()
 
-    # 1) Основной вариант: карточки вакансий на legal-category странице
-    # На странице видны блоки вида:
-    # ### Aparıcı hüquqşünas
-    # ... şirkət ...
-    # Yerləşdirilib 16.03.2026
-    #
-    # Поэтому берем строки страницы и собираем вакансии по структуре.
     lines = []
     for raw_line in soup.get_text("\n", strip=True).splitlines():
         line = clean_title(raw_line)
@@ -589,30 +583,6 @@ def parse_smartjob() -> List[Vacancy]:
 
         vacancies.append(Vacancy("smartjob", title, matched_url, published_date))
         seen_titles.add(normalized_title)
-
-    # 2) fallback: если вдруг lines-парсинг не сработал, пробуем по ссылкам
-    if not vacancies:
-        for a in soup.select("a[href]"):
-            href = a.get("href") or ""
-            title = clean_title(a.get_text(" ", strip=True))
-
-            if not href or not title:
-                continue
-            if looks_like_noise(title):
-                continue
-            if not is_legal_vacancy(title):
-                continue
-
-            url = absolute_url("https://smartjob.az", href)
-            published_date = None
-
-            if a.parent:
-                ctx = clean_title(a.parent.get_text(" ", strip=True))
-                if a.parent.parent:
-                    ctx += " " + clean_title(a.parent.parent.get_text(" ", strip=True))
-                published_date = extract_dates_from_text(ctx)
-
-            vacancies.append(Vacancy("smartjob", title, url, published_date))
 
     logger.info("SMARTJOB RAW FOUND %s", len(vacancies))
     for item in vacancies[:10]:
