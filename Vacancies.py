@@ -552,66 +552,84 @@ def parse_smartjob() -> List[Vacancy]:
     if not html_text:
         return []
 
-    soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     seen = set()
 
-    def extract_smartjob_date_from_context(text: str) -> Optional[date]:
-        text = clean_title(text)
+    # 1) Берем ссылки на вакансии прямо из сырого HTML, а не через узкие CSS-селекторы
+    raw_links = re.findall(
+        r'href=["\\\']([^"\\\']*?/index\.php/vacancy/\d+[^"\\\']*)["\\\']',
+        html_text,
+        flags=re.IGNORECASE,
+    )
 
-        m = re.search(r"Yerləşdirilib\s*(\d{2}\.\d{2}\.\d{4})", text, re.IGNORECASE)
-        if m:
-            parsed = parse_date_loose(m.group(1))
-            if parsed:
-                return parsed
-
-        m = re.search(r"(\d{2}\.\d{2}\.\d{4})", text)
-        if m:
-            parsed = parse_date_loose(m.group(1))
-            if parsed:
-                return parsed
-
-        return None
-
-    for a in soup.select("a[href]"):
-        href = (a.get("href") or "").strip()
-        title = clean_title(a.get_text(" ", strip=True))
-
-        if not href or not title:
+    # Иногда href может быть без начального /
+    normalized_links = []
+    for href in raw_links:
+        href = (href or "").strip()
+        if not href:
             continue
+        full_url = absolute_url("https://smartjob.az", href)
+        if full_url not in normalized_links:
+            normalized_links.append(full_url)
 
-        href_lower = href.lower()
+    logger.info("SMARTJOB DETAIL URLS FOUND %s", len(normalized_links))
+    for url in normalized_links[:20]:
+        logger.info("SMARTJOB DETAIL URL %s", url)
 
-        if "vacancy/" not in href_lower:
-            continue
+    def parse_smartjob_detail(detail_url: str) -> Optional[Vacancy]:
+        detail_html = fetch_html(detail_url)
+        if not detail_html:
+            return None
 
-        if looks_like_noise(title):
-            continue
+        soup = BeautifulSoup(detail_html, "html.parser")
+        page_text = clean_title(soup.get_text(" ", strip=True))
 
-        if not is_legal_vacancy(title):
-            continue
-
-        url = absolute_url("https://smartjob.az", href)
+        title = None
         published_date = None
 
-        node = a
-        for _ in range(8):
-            node = getattr(node, "parent", None)
-            if not node:
-                break
+        # 2) Сначала пытаемся взять title из h1-h4
+        for tag_name in ["h1", "h2", "h3", "h4"]:
+            tag = soup.find(tag_name)
+            if tag:
+                candidate = clean_title(tag.get_text(" ", strip=True))
+                if candidate and not looks_like_noise(candidate):
+                    title = candidate
+                    break
 
-            context = clean_title(node.get_text(" ", strip=True))
-            parsed = extract_smartjob_date_from_context(context)
-            if parsed:
-                published_date = parsed
-                break
+        # 3) Если не нашли, берем из title страницы
+        if not title and soup.title:
+            page_title = clean_title(soup.title.get_text(" ", strip=True))
+            if " - " in page_title:
+                title = clean_title(page_title.split(" - ")[0])
 
-        key = (normalize_text(title), url)
+        # 4) Дата публикации
+        m = re.search(r"\b(\d{2}\.\d{2}\.\d{4})\b", page_text)
+        if m:
+            published_date = parse_date_loose(m.group(1))
+
+        if not title:
+            return None
+
+        if looks_like_noise(title):
+            return None
+
+        if not is_legal_vacancy(title):
+            return None
+
+        return Vacancy("smartjob", title, detail_url, published_date)
+
+    # 5) Идем по detail page, это и есть главный фикс
+    for detail_url in normalized_links:
+        item = parse_smartjob_detail(detail_url)
+        if not item:
+            continue
+
+        key = (normalize_text(item.title), item.url)
         if key in seen:
             continue
 
-        vacancies.append(Vacancy("smartjob", title, url, published_date))
         seen.add(key)
+        vacancies.append(item)
 
     logger.info("SMARTJOB RAW FOUND %s", len(vacancies))
     for item in vacancies[:20]:
