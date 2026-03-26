@@ -850,15 +850,9 @@ def parse_hellojob() -> List[Vacancy]:
     vacancies: List[Vacancy] = []
     seen = set()
 
-    selectors = [
-        'a[href*="/is-elanlari/"]',
-        'a[href^="/is-elanlari/"]',
-        'a[href*="vakans"]',
-    ]
-
-    links = []
-    for selector in selectors:
-        links.extend(soup.select(selector))
+    # HelloJob category pages contain many extra links in footer/SEO blocks.
+    # We only take real vacancy links like /vakansiya/...-4846
+    links = soup.select('a[href^="/vakansiya/"], a[href*="hellojob.az/vakansiya/"]')
 
     for a in links:
         href = (a.get("href") or "").strip()
@@ -867,7 +861,7 @@ def parse_hellojob() -> List[Vacancy]:
         if not href or not title:
             continue
 
-        if href.rstrip("/") == "/is-elanlari/huquq":
+        if not re.search(r"/vakansiya/[a-z0-9\-_%]+-\d+/?$", href, re.IGNORECASE):
             continue
 
         if looks_like_noise(title):
