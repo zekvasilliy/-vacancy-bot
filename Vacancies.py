@@ -242,7 +242,7 @@ TEXTS = {
 
     "ru": {
 
-        "choose_language": "Выбери язык:",
+        "choose_language": "Choose a language:",
 
         "welcome": (
 
@@ -292,7 +292,7 @@ TEXTS = {
 
         "bot_awake": "Бот проснулся. Ты в главном меню.",
 
-        "searching": "Ищу вакансии по всем сайтам. Подожди немного.",
+        "searching": "Ищу вакансии по всем сайтам. Подождите немного.",
 
         "search_done": "Поиск завершен. Найдено: {found}\nНовых сохранено: {inserted}\n\n",
 
@@ -342,7 +342,7 @@ TEXTS = {
 
     "az": {
 
-        "choose_language": "Dili seçin:",
+        "choose_language": "Choose a language:",
 
         "welcome": (
 
@@ -2037,7 +2037,7 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await update.message.reply_text(
 
-        t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
+        TEXTS["en"]["choose_language"],
 
         reply_markup=get_language_keyboard(),
 
@@ -2055,7 +2055,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
 
             reply_markup=get_language_keyboard(),
 
@@ -2089,7 +2089,7 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
 
             reply_markup=get_language_keyboard(),
 
@@ -2123,7 +2123,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
 
             reply_markup=get_language_keyboard(),
 
@@ -2153,7 +2153,7 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
 
             reply_markup=get_language_keyboard(),
 
