@@ -4,7 +4,8 @@ import html
 import time
 import logging
 import hashlib
-from datetime import date, timedelta
+import asyncio
+from datetime import date, timedelta, datetime
 from typing import List, Dict, Optional
 
 import psycopg
@@ -155,6 +156,8 @@ TEXTS = {
         "pick_site_button": "Выбери сайт кнопкой.",
         "site_label": "Сайт",
         "date_label": "Дата",
+        "search_busy": "⏳ Другой пользователь уже обновляет вакансии. Попробуй снова через 1–2 минуты.",
+        "using_cache": "📋 Показываю свежий кэш вакансий. Обновление было меньше 20 минут назад.\n\n",
         "start_btn": "Start",
         "search_btn": "Искать вакансии",
         "change_lang_btn": "Сменить язык",
@@ -203,6 +206,8 @@ TEXTS = {
         "pick_site_button": "Saytı düymə ilə seçin.",
         "site_label": "Sayt",
         "date_label": "Tarix",
+        "search_busy": "⏳ Başqa istifadəçi artıq vakansiyaları yeniləyir. 1–2 dəqiqədən sonra yenidən cəhd edin.",
+        "using_cache": "📋 Sizə vakansiyaların təzə keş versiyası göstərilir. Yenilənmə 20 dəqiqədən az əvvəl olub.\n\n",
         "start_btn": "Start",
         "search_btn": "Vakansiyaları axtar",
         "change_lang_btn": "Dili dəyiş",
@@ -251,6 +256,8 @@ TEXTS = {
         "pick_site_button": "Choose a website using the button.",
         "site_label": "Site",
         "date_label": "Date",
+        "search_busy": "⏳ Another user is already updating vacancies. Please try again in 1–2 minutes.",
+        "using_cache": "📋 Showing fresh cached vacancies. The last update was less than 20 minutes ago.\n\n",
         "start_btn": "Start",
         "search_btn": "Search vacancies",
         "change_lang_btn": "Change language",
@@ -263,6 +270,11 @@ TEXTS = {
         "lang_btn_en": "🇬🇧 English",
     },
 }
+
+CACHE_TTL = timedelta(minutes=20)
+parsing_lock = asyncio.Lock()
+cache_payload: Optional[Dict] = None
+cache_time: Optional[datetime] = None
 
 
 class Vacancy:
@@ -1027,6 +1039,23 @@ def resolve_language_choice(text: str) -> Optional[str]:
     return None
 
 
+def is_cache_fresh() -> bool:
+    return cache_payload is not None and cache_time is not None and datetime.utcnow() - cache_time < CACHE_TTL
+
+
+async def send_cached_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    header = t(context, "using_cache") + cache_payload["header"]
+    text = format_vacancy_lines_html(cache_payload["recent"], t(context, "empty_recent"), context)
+
+    for chunk in split_long_message(header + text):
+        await update.message.reply_text(
+            chunk,
+            reply_markup=get_main_menu_keyboard(context),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+
 async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
@@ -1100,31 +1129,54 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        t(context, "searching"),
-        reply_markup=get_main_menu_keyboard(context),
-    )
+    global cache_payload, cache_time
 
-    collected = collect_all_vacancies()
-    all_vacancies: List[Vacancy] = []
-    for _, items in collected.items():
-        all_vacancies.extend(items)
+    if is_cache_fresh():
+        await send_cached_result(update, context)
+        return MAIN_MENU
 
-    inserted = save_vacancies(all_vacancies)
-    cleanup_old_vacancies()
-
-    recent = get_recent_vacancies(limit=1000)
-    text = format_vacancy_lines_html(recent, t(context, "empty_recent"), context)
-
-    header = t(context, "search_done").format(found=len(all_vacancies), inserted=inserted)
-
-    for chunk in split_long_message(header + text):
+    if parsing_lock.locked():
         await update.message.reply_text(
-            chunk,
+            t(context, "search_busy"),
             reply_markup=get_main_menu_keyboard(context),
-            parse_mode="HTML",
-            disable_web_page_preview=True,
         )
+        return MAIN_MENU
+
+    async with parsing_lock:
+        if is_cache_fresh():
+            await send_cached_result(update, context)
+            return MAIN_MENU
+
+        await update.message.reply_text(
+            t(context, "searching"),
+            reply_markup=get_main_menu_keyboard(context),
+        )
+
+        collected = collect_all_vacancies()
+        all_vacancies: List[Vacancy] = []
+        for _, items in collected.items():
+            all_vacancies.extend(items)
+
+        inserted = save_vacancies(all_vacancies)
+        cleanup_old_vacancies()
+
+        recent = get_recent_vacancies(limit=1000)
+        text = format_vacancy_lines_html(recent, t(context, "empty_recent"), context)
+
+        header = t(context, "search_done").format(found=len(all_vacancies), inserted=inserted)
+        cache_payload = {
+            "header": header,
+            "recent": recent,
+        }
+        cache_time = datetime.utcnow()
+
+        for chunk in split_long_message(header + text):
+            await update.message.reply_text(
+                chunk,
+                reply_markup=get_main_menu_keyboard(context),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
 
     return MAIN_MENU
 
