@@ -647,19 +647,37 @@ def cleanup_old_vacancies():
 
 def cleanup_duplicate_vacancies():
 
+    border = date.today() - timedelta(days=60)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                r"""
-                DELETE FROM vacancies older
-                USING vacancies newer
-                WHERE older.id < newer.id
-                  AND older.site = 'hellojob'
-                  AND newer.site = 'hellojob'
-                  AND regexp_replace(lower(trim(both '/' from split_part(split_part(older.url, '?', 1), '#', 1))), '-\d+$', '') =
-                      regexp_replace(lower(trim(both '/' from split_part(split_part(newer.url, '?', 1), '#', 1))), '-\d+$', '')
                 """
+                SELECT id, site, title, url, published_date, found_date
+                FROM vacancies
+                WHERE COALESCE(published_date, found_date) >= %s
+                ORDER BY id DESC
+                """,
+                (border,),
             )
+            rows = cur.fetchall()
+
+            seen = set()
+            ids_to_delete = []
+
+            for row_id, site, title, url, published_date, found_date in rows:
+                key = build_vacancy_storage_key(site, title, url)
+                if key in seen:
+                    ids_to_delete.append(row_id)
+                    continue
+                seen.add(key)
+
+            if ids_to_delete:
+                cur.execute(
+                    "DELETE FROM vacancies WHERE id = ANY(%s)",
+                    (ids_to_delete,),
+                )
+
         conn.commit()
 
 
@@ -1073,9 +1091,18 @@ def absolute_url(base: str, url: str) -> str:
 def extract_trailing_numeric_id(url: str) -> Optional[str]:
 
     cleaned = (url or "").strip().rstrip("/")
-    m = re.search(r"-(\d+)$", cleaned)
-    if m:
-        return m.group(1)
+
+    patterns = [
+        r"-(\d+)$",
+        r"/(\d+)$",
+        r"id=(\d+)",
+    ]
+
+    for pattern in patterns:
+        m = re.search(pattern, cleaned, re.IGNORECASE)
+        if m:
+            return m.group(1)
+
     return None
 
 
@@ -1086,11 +1113,22 @@ def canonicalize_job_url(site: str, url: str) -> str:
     if not cleaned:
         return ""
 
+    cleaned_lower = cleaned.lower()
     vacancy_id = extract_trailing_numeric_id(cleaned)
+
     if site == "hellojob" and vacancy_id:
         return f"hellojob:{vacancy_id}"
 
-    return cleaned.lower()
+    if site == "azvak" and vacancy_id and "/vakansiyalar/" in cleaned_lower:
+        return f"azvak:{vacancy_id}"
+
+    if site == "jobsearch" and vacancy_id and "/vacancies/" in cleaned_lower:
+        return f"jobsearch:{vacancy_id}"
+
+    if site == "busy" and vacancy_id and "/vacancy/" in cleaned_lower:
+        return f"busy:{vacancy_id}"
+
+    return cleaned_lower
 
 
 
@@ -1113,9 +1151,12 @@ def deduplicate_vacancy_rows(rows) -> List[Dict]:
 
     for site, title, url, published_date, found_date in rows:
         canonical_url = canonicalize_job_url(site, url)
-        key = (site, canonical_url or normalize_text(title))
+        normalized_title = normalize_text(title)
+        key = canonical_url or f"{site}|{normalized_title}|{published_date or found_date}"
+
         if key in seen:
             continue
+
         seen.add(key)
         result.append({
             "site": site,
@@ -1194,50 +1235,32 @@ def looks_like_noise(title: str) -> bool:
 def deduplicate_vacancies(vacancies: List[Vacancy]) -> List[Vacancy]:
 
     seen = set()
-
     result = []
-
-
 
     for v in vacancies:
 
         normalized_title = normalize_text(v.title)
-
         cleaned_url = v.url.rstrip("/")
-
-        key = (v.site, normalized_title, cleaned_url)
-
-
+        canonical_url = canonicalize_job_url(v.site, cleaned_url)
+        key = canonical_url or f"{v.site}|{normalized_title}|{v.published_date}"
 
         if key in seen:
-
             continue
 
-        seen.add(key)
-
-
-
         if looks_like_noise(v.title):
-
             continue
 
         if not is_legal_vacancy(v.title):
-
             continue
 
         if not cleaned_url:
-
             continue
 
         if not is_fresh_enough(v.published_date):
-
             continue
 
-
-
+        seen.add(key)
         result.append(v)
-
-
 
     return result
 
@@ -1596,124 +1619,50 @@ def parse_glorri() -> List[Vacancy]:
 def parse_azvak() -> List[Vacancy]:
 
     html_text = fetch_html(SITE_URLS["azvak"])
-
     if not html_text:
-
         return []
 
-
-
     soup = BeautifulSoup(html_text, "html.parser")
-
     vacancies: List[Vacancy] = []
+    seen = set()
 
-    lines = []
+    links = soup.select('a[href*="/vakansiyalar/"]')
 
+    for a in links:
+        href = (a.get("href") or "").strip()
+        title = clean_title(a.get_text(" ", strip=True))
 
-
-    for raw_line in soup.get_text("\n", strip=True).splitlines():
-
-        line = clean_title(raw_line)
-
-        if line:
-
-            lines.append(line)
-
-
-
-    link_candidates = []
-
-    for a in soup.select("a[href]"):
-
-        href = a.get("href") or ""
-
-        text = clean_title(a.get_text(" ", strip=True))
-
-        if href and text:
-
-            link_candidates.append((normalize_text(text), absolute_url("https://azvak.az", href)))
-
-
-
-    seen_titles = set()
-
-
-
-    for i, line in enumerate(lines):
-
-        title = clean_title(line)
-
-
-
+        if not href or not title:
+            continue
+        if "/vakansiyalar/" not in href:
+            continue
         if looks_like_noise(title) or not is_legal_vacancy(title):
-
             continue
 
-        if title in seen_titles:
-
+        full_url = absolute_url("https://azvak.az", href)
+        canonical_url = canonicalize_job_url("azvak", full_url)
+        if not canonical_url:
             continue
-
-
+        if canonical_url in seen:
+            continue
 
         published_date = None
-
-        for j in range(i + 1, min(i + 8, len(lines))):
-
-            possible_date = parse_date_loose(lines[j])
-
-            if possible_date:
-
-                published_date = possible_date
-
+        container = a
+        for _ in range(6):
+            if not container:
                 break
-
-
-
-        matched_url = None
-
-        normalized_title = normalize_text(title)
-
-
-
-        for link_text, link_url in link_candidates:
-
-            if link_text == normalized_title:
-
-                matched_url = link_url
-
+            context = clean_title(container.get_text(" ", strip=True))
+            parsed = extract_dates_from_text(context)
+            if parsed:
+                published_date = parsed
                 break
+            container = container.parent
 
-
-
-        if not matched_url:
-
-            for link_text, link_url in link_candidates:
-
-                if normalized_title in link_text or link_text in normalized_title:
-
-                    matched_url = link_url
-
-                    break
-
-
-
-        if not matched_url:
-
-            matched_url = SITE_URLS["azvak"]
-
-
-
-        vacancies.append(Vacancy("azvak", title, matched_url, published_date))
-
-        seen_titles.add(title)
-
-
+        seen.add(canonical_url)
+        vacancies.append(Vacancy("azvak", title, full_url, published_date))
 
     logger.info("AZVAK FOUND %s", len(vacancies))
-
     return deduplicate_vacancies(vacancies)
-
-
 
 
 
