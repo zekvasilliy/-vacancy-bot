@@ -4,8 +4,8 @@ import html
 import time
 import logging
 import hashlib
-from datetime import date, timedelta, datetime
-from typing import List, Dict, Optional, Tuple
+from datetime import date, timedelta
+from typing import List, Dict, Optional
 
 import psycopg
 import requests
@@ -58,6 +58,7 @@ KEYWORDS = [
     "kiçik hüquqşünas",
     "korporativ hüquqşünas",
     "korporativ müqavilələr üzrə hüquqşünas",
+    "hüquq üzrə mütəxəxəssis",
     "hüquq üzrə mütəxəssis",
     "hüquq məsləhətçisi",
     "hüquq departamenti",
@@ -127,8 +128,7 @@ TEXTS = {
             "Что умеет бот:\n"
             "1. Искать вакансии\n"
             "2. Менять язык\n"
-            "3. Показывать архив вакансий по сайтам за последние 2 месяца\n"
-            "4. Показывать статистику пользователей"
+            "3. Показывать архив вакансий по сайтам за последние 2 месяца"
         ),
         "help": (
             "Помощь:\n\n"
@@ -139,8 +139,7 @@ TEXTS = {
             "1. Нажми Start\n"
             "2. Нажми 'Искать вакансии' для быстрого поиска\n"
             "3. Нажми 'Сменить язык', чтобы переключить язык бота\n"
-            "4. Нажми 'Старые вакансии', затем выбери сайт\n"
-            "5. Нажми 'Статистика бота', чтобы увидеть число пользователей\n\n"
+            "4. Нажми 'Старые вакансии', затем выбери сайт\n\n"
             "В архиве название вакансии — синяя кликабельная ссылка.\n"
             "Показываются вакансии только за последние 2 месяца."
         ),
@@ -156,16 +155,10 @@ TEXTS = {
         "pick_site_button": "Выбери сайт кнопкой.",
         "site_label": "Сайт",
         "date_label": "Дата",
-        "stats_title": "Статистика бота:",
-        "stats_total": "Всего уникальных пользователей",
-        "stats_new_today": "Новых сегодня",
-        "stats_active_7": "Активных за 7 дней",
-        "stats_active_30": "Активных за 30 дней",
         "start_btn": "Start",
         "search_btn": "Искать вакансии",
         "change_lang_btn": "Сменить язык",
         "old_btn": "Старые вакансии",
-        "stats_btn": "Статистика бота",
         "help_btn": "Помощь",
         "cancel_btn": "Отмена",
         "back_btn": "Назад",
@@ -183,8 +176,7 @@ TEXTS = {
             "Bot bunları edə bilir:\n"
             "1. Vakansiyaları axtarmaq\n"
             "2. Dili dəyişmək\n"
-            "3. Son 2 ay üzrə saytlar üzrə vakansiya arxivini göstərmək\n"
-            "4. İstifadəçi statistikasını göstərmək"
+            "3. Son 2 ay üzrə saytlar üzrə vakansiya arxivini göstərmək"
         ),
         "help": (
             "Kömək:\n\n"
@@ -195,8 +187,7 @@ TEXTS = {
             "1. Start düyməsinə basın\n"
             "2. Sürətli axtarış üçün 'Vakansiyaları axtar' düyməsinə basın\n"
             "3. Botun dilini dəyişmək üçün 'Dili dəyiş' düyməsinə basın\n"
-            "4. 'Köhnə vakansiyalar' düyməsinə basın, sonra saytı seçin\n"
-            "5. 'Bot statistikası' düyməsinə basın ki, istifadəçi sayını görün\n\n"
+            "4. 'Köhnə vakansiyalar' düyməsinə basın, sonra saytı seçin\n\n"
             "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir.\n"
             "Yalnız son 2 ayın vakansiyaları göstərilir."
         ),
@@ -212,16 +203,10 @@ TEXTS = {
         "pick_site_button": "Saytı düymə ilə seçin.",
         "site_label": "Sayt",
         "date_label": "Tarix",
-        "stats_title": "Bot statistikası:",
-        "stats_total": "Ümumi unikal istifadəçi sayı",
-        "stats_new_today": "Bu gün yeni",
-        "stats_active_7": "Son 7 gündə aktiv",
-        "stats_active_30": "Son 30 gündə aktiv",
         "start_btn": "Start",
         "search_btn": "Vakansiyaları axtar",
         "change_lang_btn": "Dili dəyiş",
         "old_btn": "Köhnə vakansiyalar",
-        "stats_btn": "Bot statistikası",
         "help_btn": "Kömək",
         "cancel_btn": "Ləğv et",
         "back_btn": "Geri",
@@ -239,8 +224,7 @@ TEXTS = {
             "What this bot can do:\n"
             "1. Search vacancies\n"
             "2. Change language\n"
-            "3. Show vacancy archive by website for the last 2 months\n"
-            "4. Show user statistics"
+            "3. Show vacancy archive by website for the last 2 months"
         ),
         "help": (
             "Help:\n\n"
@@ -251,8 +235,7 @@ TEXTS = {
             "1. Press Start\n"
             "2. Press 'Search vacancies' for a quick search\n"
             "3. Press 'Change language' to switch the bot language\n"
-            "4. Press 'Old vacancies', then choose a website\n"
-            "5. Press 'Bot statistics' to see user counts\n\n"
+            "4. Press 'Old vacancies', then choose a website\n\n"
             "In the archive, the vacancy title is a blue clickable link.\n"
             "Only vacancies from the last 2 months are shown."
         ),
@@ -268,16 +251,10 @@ TEXTS = {
         "pick_site_button": "Choose a website using the button.",
         "site_label": "Site",
         "date_label": "Date",
-        "stats_title": "Bot statistics:",
-        "stats_total": "Total unique users",
-        "stats_new_today": "New today",
-        "stats_active_7": "Active in last 7 days",
-        "stats_active_30": "Active in last 30 days",
         "start_btn": "Start",
         "search_btn": "Search vacancies",
         "change_lang_btn": "Change language",
         "old_btn": "Old vacancies",
-        "stats_btn": "Bot statistics",
         "help_btn": "Help",
         "cancel_btn": "Cancel",
         "back_btn": "Back",
@@ -321,26 +298,6 @@ def init_db():
                 )
                 """
             )
-
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS bot_users (
-                    user_id BIGINT PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    language_code TEXT,
-                    selected_language TEXT,
-                    first_seen TIMESTAMP NOT NULL,
-                    last_seen TIMESTAMP NOT NULL
-                )
-                """
-            )
-
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_bot_users_last_seen ON bot_users(last_seen)"
-            )
-
         conn.commit()
 
 
@@ -372,95 +329,6 @@ def save_vacancies(vacancies: List[Vacancy]) -> int:
                     inserted += 1
         conn.commit()
     return inserted
-
-
-def upsert_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not user:
-        return
-
-    now = datetime.utcnow()
-    selected_language = context.user_data.get("lang")
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO bot_users (
-                    user_id, username, first_name, last_name,
-                    language_code, selected_language, first_seen, last_seen
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    language_code = EXCLUDED.language_code,
-                    selected_language = COALESCE(EXCLUDED.selected_language, bot_users.selected_language),
-                    last_seen = EXCLUDED.last_seen
-                """,
-                (
-                    user.id,
-                    user.username,
-                    user.first_name,
-                    user.last_name,
-                    user.language_code,
-                    selected_language,
-                    now,
-                    now,
-                ),
-            )
-        conn.commit()
-
-
-def update_user_selected_language(user_id: int, selected_language: str):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE bot_users
-                SET selected_language = %s, last_seen = %s
-                WHERE user_id = %s
-                """,
-                (selected_language, datetime.utcnow(), user_id),
-            )
-        conn.commit()
-
-
-def get_user_stats() -> Dict[str, int]:
-    today_start = datetime.combine(date.today(), datetime.min.time())
-    last_7_days = datetime.utcnow() - timedelta(days=7)
-    last_30_days = datetime.utcnow() - timedelta(days=30)
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM bot_users")
-            total_users = cur.fetchone()[0]
-
-            cur.execute(
-                "SELECT COUNT(*) FROM bot_users WHERE first_seen >= %s",
-                (today_start,),
-            )
-            new_today = cur.fetchone()[0]
-
-            cur.execute(
-                "SELECT COUNT(*) FROM bot_users WHERE last_seen >= %s",
-                (last_7_days,),
-            )
-            active_7_days = cur.fetchone()[0]
-
-            cur.execute(
-                "SELECT COUNT(*) FROM bot_users WHERE last_seen >= %s",
-                (last_30_days,),
-            )
-            active_30_days = cur.fetchone()[0]
-
-    return {
-        "total_users": total_users,
-        "new_today": new_today,
-        "active_7_days": active_7_days,
-        "active_30_days": active_30_days,
-    }
 
 
 def get_recent_vacancies(limit: int = 1000) -> List[Dict]:
@@ -1069,8 +937,7 @@ def get_language_keyboard():
 def get_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [t(context, "search_btn"), t(context, "change_lang_btn")],
-        [t(context, "old_btn"), t(context, "stats_btn")],
-        [t(context, "help_btn")],
+        [t(context, "old_btn"), t(context, "help_btn")],
         [t(context, "start_btn"), t(context, "cancel_btn")],
     ]
     return ReplyKeyboardMarkup(
@@ -1160,19 +1027,7 @@ def resolve_language_choice(text: str) -> Optional[str]:
     return None
 
 
-def build_stats_message(context: ContextTypes.DEFAULT_TYPE) -> str:
-    stats = get_user_stats()
-    return (
-        f"{t(context, 'stats_title')}\n\n"
-        f"{t(context, 'stats_total')}: {stats['total_users']}\n"
-        f"{t(context, 'stats_new_today')}: {stats['new_today']}\n"
-        f"{t(context, 'stats_active_7')}: {stats['active_7_days']}\n"
-        f"{t(context, 'stats_active_30')}: {stats['active_30_days']}"
-    )
-
-
 async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
     await update.message.reply_text(
         t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
         reply_markup=get_language_keyboard(),
@@ -1181,8 +1036,6 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1198,8 +1051,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     selected = resolve_language_choice(update.message.text)
 
     if not selected:
@@ -1211,9 +1062,6 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["lang"] = selected
 
-    if update.effective_user:
-        update_user_selected_language(update.effective_user.id, selected)
-
     await update.message.reply_text(
         t(context, "welcome"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1222,8 +1070,6 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1239,8 +1085,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1256,8 +1100,6 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     await update.message.reply_text(
         t(context, "searching"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1287,19 +1129,7 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
-async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
-    await update.message.reply_text(
-        build_stats_message(context),
-        reply_markup=get_main_menu_keyboard(context),
-    )
-    return MAIN_MENU
-
-
 async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     await update.message.reply_text(
         t(context, "old_jobs_prompt"),
         reply_markup=get_old_jobs_keyboard(context),
@@ -1308,8 +1138,6 @@ async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
@@ -1364,8 +1192,6 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update, context)
-
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
@@ -1379,9 +1205,6 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == normalize_button(t(context, "old_btn")):
         return await open_old_jobs_menu(update, context)
-
-    if text == normalize_button(t(context, "stats_btn")):
-        return await show_stats(update, context)
 
     if text == normalize_button(t(context, "help_btn")):
         return await help_command(update, context)
@@ -1435,7 +1258,6 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("language", open_language_menu))
-    app.add_handler(CommandHandler("stats", show_stats))
 
     webhook_path = TOKEN
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
