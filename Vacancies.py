@@ -1,10 +1,9 @@
 import os
 import re
 import html
-import time
 import logging
 import hashlib
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 from typing import List, Dict, Optional
 
 import psycopg
@@ -58,7 +57,6 @@ KEYWORDS = [
     "kiçik hüquqşünas",
     "korporativ hüquqşünas",
     "korporativ müqavilələr üzrə hüquqşünas",
-    "hüquq üzrə mütəxəxəssis",
     "hüquq üzrə mütəxəssis",
     "hüquq məsləhətçisi",
     "hüquq departamenti",
@@ -119,7 +117,7 @@ HEADERS = {
 
 TEXTS = {
     "ru": {
-        "choose_language": "Выбери язык:",
+        "choose_language": "Choose a language:",
         "welcome": (
             "Добро пожаловать в бот для поиска вакансий юриста.\n\n"
             "Этот бот работает по кнопке Start.\n"
@@ -167,7 +165,7 @@ TEXTS = {
         "lang_btn_en": "🇬🇧 English",
     },
     "az": {
-        "choose_language": "Dili seçin:",
+        "choose_language": "Choose a language:",
         "welcome": (
             "Hüquqşünas vakansiyalarını axtaran bota xoş gəlmisiniz.\n\n"
             "Bu bot Start düyməsi ilə işləyir.\n"
@@ -282,42 +280,6 @@ def get_connection():
     return psycopg.connect(DATABASE_URL)
 
 
-def upsert_user(update: Update):
-    user = update.effective_user
-    if not user:
-        return
-
-    now = datetime.utcnow()
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO bot_users (
-                    user_id, username, first_name, last_name,
-                    language_code, first_seen, last_seen
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    language_code = EXCLUDED.language_code,
-                    last_seen = EXCLUDED.last_seen
-                """,
-                (
-                    user.id,
-                    user.username,
-                    user.first_name,
-                    user.last_name,
-                    user.language_code,
-                    now,
-                    now,
-                ),
-            )
-        conn.commit()
-
-
 def init_db():
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -334,23 +296,33 @@ def init_db():
                 )
                 """
             )
-
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS bot_users (
-                    user_id BIGINT PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    language_code TEXT,
-                    first_seen TIMESTAMP NOT NULL,
-                    last_seen TIMESTAMP NOT NULL
+                    telegram_id BIGINT PRIMARY KEY,
+                    first_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+                    last_seen TIMESTAMP NOT NULL DEFAULT NOW()
                 )
                 """
             )
+        conn.commit()
 
+
+def register_user(update: Update):
+    user = update.effective_user
+    if not user:
+        return
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_bot_users_last_seen ON bot_users(last_seen)"
+                """
+                INSERT INTO bot_users (telegram_id, first_seen, last_seen)
+                VALUES (%s, NOW(), NOW())
+                ON CONFLICT (telegram_id)
+                DO UPDATE SET last_seen = NOW()
+                """,
+                (user.id,),
             )
         conn.commit()
 
@@ -690,7 +662,6 @@ def parse_jobsearch() -> List[Vacancy]:
         vacancies.append(Vacancy("jobsearch", title, url, published_date))
         seen.add(key)
 
-    logger.info("JOBSEARCH FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
@@ -771,22 +742,17 @@ def parse_busy_page(url: str) -> List[Vacancy]:
         vacancies.append(Vacancy("busy", title, full_url, published_date))
         seen.add(key)
 
-    logger.info("BUSY PAGE %s FOUND %s", url, len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
 def parse_busy() -> List[Vacancy]:
     items = []
-
     for url in SITE_URLS["busy_professions"]:
         try:
-            parsed = parse_busy_page(url)
-            items.extend(parsed)
-            time.sleep(0.4)
+            items.extend(parse_busy_page(url))
         except Exception as e:
             logger.error("BUSY parse error for %s: %s", url, e)
 
-    logger.info("BUSY TOTAL FOUND %s", len(items))
     return deduplicate_vacancies(items)
 
 
@@ -817,7 +783,6 @@ def parse_glorri() -> List[Vacancy]:
 
         vacancies.append(Vacancy("glorri", title, url, published_date))
 
-    logger.info("GLORRI FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
@@ -879,7 +844,6 @@ def parse_azvak() -> List[Vacancy]:
         vacancies.append(Vacancy("azvak", title, matched_url, published_date))
         seen_titles.add(title)
 
-    logger.info("AZVAK FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
@@ -908,10 +872,8 @@ def parse_hellojob() -> List[Vacancy]:
 
         if not href or not title:
             continue
-
         if href.rstrip("/") == "/is-elanlari/huquq":
             continue
-
         if looks_like_noise(title):
             continue
         if not is_legal_vacancy(title):
@@ -944,25 +906,17 @@ def parse_hellojob() -> List[Vacancy]:
         vacancies.append(Vacancy("hellojob", title, url, published_date))
         seen.add(key)
 
-    logger.info("HELLOJOB FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
 def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
-    result = {
+    return {
         "jobsearch": parse_jobsearch(),
         "busy": parse_busy(),
         "glorri": parse_glorri(),
         "azvak": parse_azvak(),
         "hellojob": parse_hellojob(),
     }
-
-    for site, items in result.items():
-        logger.info("SITE %s FOUND %s", site, len(items))
-        for item in items[:10]:
-            logger.info("SITE %s ITEM %s | %s", site, item.title, item.url)
-
-    return result
 
 
 def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -1082,18 +1036,20 @@ def resolve_language_choice(text: str) -> Optional[str]:
 
 
 async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    register_user(update)
     await update.message.reply_text(
-        t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
+        TEXTS["en"]["choose_language"] if "lang" not in context.user_data else t(context, "choose_language"),
         reply_markup=get_language_keyboard(),
     )
     return LANG_MENU
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
+
     if "lang" not in context.user_data:
         await update.message.reply_text(
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
@@ -1106,12 +1062,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
     selected = resolve_language_choice(update.message.text)
 
     if not selected:
         await update.message.reply_text(
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
@@ -1126,10 +1082,11 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
+
     if "lang" not in context.user_data:
         await update.message.reply_text(
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
@@ -1142,10 +1099,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
+
     if "lang" not in context.user_data:
         await update.message.reply_text(
-            TEXTS["ru"]["choose_language"],
+            TEXTS["en"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
@@ -1158,6 +1116,8 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    register_user(update)
+
     await update.message.reply_text(
         t(context, "searching"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1165,7 +1125,7 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     collected = collect_all_vacancies()
     all_vacancies: List[Vacancy] = []
-    for _, items in collected.items():
+    for items in collected.values():
         all_vacancies.extend(items)
 
     inserted = save_vacancies(all_vacancies)
@@ -1173,7 +1133,6 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     recent = get_recent_vacancies(limit=1000)
     text = format_vacancy_lines_html(recent, t(context, "empty_recent"), context)
-
     header = t(context, "search_done").format(found=len(all_vacancies), inserted=inserted)
 
     for chunk in split_long_message(header + text):
@@ -1188,6 +1147,7 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    register_user(update)
     await update.message.reply_text(
         t(context, "old_jobs_prompt"),
         reply_markup=get_old_jobs_keyboard(context),
@@ -1196,7 +1156,7 @@ async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
@@ -1251,7 +1211,7 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    upsert_user(update)
+    register_user(update)
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
