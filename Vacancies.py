@@ -4,7 +4,7 @@ import html
 import time
 import logging
 import hashlib
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import List, Dict, Optional
 
 import psycopg
@@ -282,6 +282,42 @@ def get_connection():
     return psycopg.connect(DATABASE_URL)
 
 
+def upsert_user(update: Update):
+    user = update.effective_user
+    if not user:
+        return
+
+    now = datetime.utcnow()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO bot_users (
+                    user_id, username, first_name, last_name,
+                    language_code, first_seen, last_seen
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    language_code = EXCLUDED.language_code,
+                    last_seen = EXCLUDED.last_seen
+                """,
+                (
+                    user.id,
+                    user.username,
+                    user.first_name,
+                    user.last_name,
+                    user.language_code,
+                    now,
+                    now,
+                ),
+            )
+        conn.commit()
+
+
 def init_db():
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -297,6 +333,24 @@ def init_db():
                     unique_hash TEXT NOT NULL UNIQUE
                 )
                 """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_users (
+                    user_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    language_code TEXT,
+                    first_seen TIMESTAMP NOT NULL,
+                    last_seen TIMESTAMP NOT NULL
+                )
+                """
+            )
+
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_users_last_seen ON bot_users(last_seen)"
             )
         conn.commit()
 
@@ -1036,6 +1090,7 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1051,6 +1106,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     selected = resolve_language_choice(update.message.text)
 
     if not selected:
@@ -1070,6 +1126,7 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1085,6 +1142,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
@@ -1138,6 +1196,7 @@ async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
@@ -1192,6 +1251,7 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    upsert_user(update)
     text = normalize_button(update.message.text)
 
     if text == normalize_button(t(context, "start_btn")):
