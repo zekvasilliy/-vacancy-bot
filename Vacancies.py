@@ -5,7 +5,7 @@ import time
 import logging
 import hashlib
 from datetime import date, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 import psycopg
 import requests
@@ -58,6 +58,7 @@ KEYWORDS = [
     "kiçik hüquqşünas",
     "korporativ hüquqşünas",
     "korporativ müqavilələr üzrə hüquqşünas",
+    "hüquq üzrə mütəxəxəssis",
     "hüquq üzrə mütəxəssis",
     "hüquq məsləhətçisi",
     "hüquq departamenti",
@@ -126,7 +127,7 @@ TEXTS = {
             "При каждом новом использовании тоже нужно нажимать Start, чтобы бот проснулся.\n\n"
             "Что умеет бот:\n"
             "1. Искать вакансии\n"
-            "2. Обновлять вакансии\n"
+            "2. Менять язык\n"
             "3. Показывать архив вакансий по сайтам за последние 2 месяца"
         ),
         "help": (
@@ -137,16 +138,14 @@ TEXTS = {
             "Как пользоваться:\n"
             "1. Нажми Start\n"
             "2. Нажми 'Искать вакансии' для быстрого поиска\n"
-            "3. Нажми 'Обновить вакансии', чтобы заново собрать вакансии и сохранить новые\n"
+            "3. Нажми 'Сменить язык', чтобы переключить язык бота\n"
             "4. Нажми 'Старые вакансии', затем выбери сайт\n\n"
             "В архиве название вакансии — синяя кликабельная ссылка.\n"
             "Показываются вакансии только за последние 2 месяца."
         ),
         "bot_awake": "Бот проснулся. Ты в главном меню.",
         "searching": "Ищу вакансии по всем сайтам. Подожди немного.",
-        "refreshing": "Обновляю вакансии и архив. Подожди немного.",
         "search_done": "Поиск завершен. Найдено: {found}\nНовых сохранено: {inserted}\n\n",
-        "refresh_done": "Обновление завершено.\n\n{summary}\n\nНовых вакансий сохранено: {inserted}",
         "old_jobs_prompt": "Выбери сайт, чтобы открыть архив вакансий за последние 2 месяца.",
         "empty_recent": "Свежих вакансий пока не найдено.",
         "empty_site": "По сайту {site} вакансий за последние 2 месяца пока нет.",
@@ -158,7 +157,7 @@ TEXTS = {
         "date_label": "Дата",
         "start_btn": "Start",
         "search_btn": "Искать вакансии",
-        "refresh_btn": "Обновить вакансии",
+        "change_lang_btn": "Сменить язык",
         "old_btn": "Старые вакансии",
         "help_btn": "Помощь",
         "cancel_btn": "Отмена",
@@ -176,7 +175,7 @@ TEXTS = {
             "Hər yeni istifadədə də botun oyanması üçün yenidən Start düyməsinə basmaq lazımdır.\n\n"
             "Bot bunları edə bilir:\n"
             "1. Vakansiyaları axtarmaq\n"
-            "2. Vakansiyaları yeniləmək\n"
+            "2. Dili dəyişmək\n"
             "3. Son 2 ay üzrə saytlar üzrə vakansiya arxivini göstərmək"
         ),
         "help": (
@@ -187,16 +186,14 @@ TEXTS = {
             "İstifadə qaydası:\n"
             "1. Start düyməsinə basın\n"
             "2. Sürətli axtarış üçün 'Vakansiyaları axtar' düyməsinə basın\n"
-            "3. Vakansiyaları yenidən toplamaq və yenilərini saxlamaq üçün 'Vakansiyaları yenilə' düyməsinə basın\n"
+            "3. Botun dilini dəyişmək üçün 'Dili dəyiş' düyməsinə basın\n"
             "4. 'Köhnə vakansiyalar' düyməsinə basın, sonra saytı seçin\n\n"
             "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir.\n"
             "Yalnız son 2 ayın vakansiyaları göstərilir."
         ),
         "bot_awake": "Bot oyandı. Siz əsas menyudasınız.",
         "searching": "Bütün saytlar üzrə vakansiyalar axtarılır. Bir az gözləyin.",
-        "refreshing": "Vakansiyalar və arxiv yenilənir. Bir az gözləyin.",
         "search_done": "Axtarış tamamlandı. Tapıldı: {found}\nYeni saxlanıldı: {inserted}\n\n",
-        "refresh_done": "Yeniləmə tamamlandı.\n\n{summary}\n\nYeni vakansiya saxlanıldı: {inserted}",
         "old_jobs_prompt": "Son 2 ay üzrə vakansiya arxivini açmaq üçün saytı seçin.",
         "empty_recent": "Hələlik yeni vakansiya tapılmadı.",
         "empty_site": "{site} saytı üzrə son 2 ayda vakansiya yoxdur.",
@@ -208,7 +205,7 @@ TEXTS = {
         "date_label": "Tarix",
         "start_btn": "Start",
         "search_btn": "Vakansiyaları axtar",
-        "refresh_btn": "Vakansiyaları yenilə",
+        "change_lang_btn": "Dili dəyiş",
         "old_btn": "Köhnə vakansiyalar",
         "help_btn": "Kömək",
         "cancel_btn": "Ləğv et",
@@ -226,7 +223,7 @@ TEXTS = {
             "Each time you use the bot again, you should press Start so that the bot wakes up.\n\n"
             "What this bot can do:\n"
             "1. Search vacancies\n"
-            "2. Refresh vacancies\n"
+            "2. Change language\n"
             "3. Show vacancy archive by website for the last 2 months"
         ),
         "help": (
@@ -237,16 +234,14 @@ TEXTS = {
             "How to use:\n"
             "1. Press Start\n"
             "2. Press 'Search vacancies' for a quick search\n"
-            "3. Press 'Refresh vacancies' to collect vacancies again and save new ones\n"
+            "3. Press 'Change language' to switch the bot language\n"
             "4. Press 'Old vacancies', then choose a website\n\n"
             "In the archive, the vacancy title is a blue clickable link.\n"
             "Only vacancies from the last 2 months are shown."
         ),
         "bot_awake": "The bot is awake. You are in the main menu.",
         "searching": "Searching vacancies across all websites. Please wait.",
-        "refreshing": "Refreshing vacancies and archive. Please wait.",
         "search_done": "Search completed. Found: {found}\nNew saved: {inserted}\n\n",
-        "refresh_done": "Refresh completed.\n\n{summary}\n\nNew vacancies saved: {inserted}",
         "old_jobs_prompt": "Choose a website to open the vacancy archive for the last 2 months.",
         "empty_recent": "No fresh vacancies found yet.",
         "empty_site": "No vacancies found for {site} in the last 2 months.",
@@ -258,7 +253,7 @@ TEXTS = {
         "date_label": "Date",
         "start_btn": "Start",
         "search_btn": "Search vacancies",
-        "refresh_btn": "Refresh vacancies",
+        "change_lang_btn": "Change language",
         "old_btn": "Old vacancies",
         "help_btn": "Help",
         "cancel_btn": "Cancel",
@@ -406,6 +401,7 @@ def is_legal_vacancy(title: str) -> bool:
 
 
 def month_name_to_number(month_name: str) -> Optional[int]:
+    month_name = month_name.lower().strip()
     months = {
         "yan": 1, "yanvar": 1,
         "fev": 2, "fevral": 2,
@@ -433,6 +429,10 @@ def parse_relative_days(raw: str) -> Optional[date]:
         return date.today() - timedelta(days=int(m.group(1)))
 
     m = re.search(r"(\d+)\s*day", raw)
+    if m:
+        return date.today() - timedelta(days=int(m.group(1)))
+
+    m = re.search(r"(\d+)\s*days", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
 
@@ -929,22 +929,22 @@ def get_language_keyboard():
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
-        one_time_keyboard=True,
-        is_persistent=True,
+        one_time_keyboard=False,
+        is_persistent=False,
     )
 
 
 def get_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [t(context, "search_btn"), t(context, "refresh_btn")],
+        [t(context, "search_btn"), t(context, "change_lang_btn")],
         [t(context, "old_btn"), t(context, "help_btn")],
         [t(context, "start_btn"), t(context, "cancel_btn")],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
-        one_time_keyboard=True,
-        is_persistent=True,
+        one_time_keyboard=False,
+        is_persistent=False,
     )
 
 
@@ -958,8 +958,8 @@ def get_old_jobs_keyboard(context: ContextTypes.DEFAULT_TYPE):
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
-        one_time_keyboard=True,
-        is_persistent=True,
+        one_time_keyboard=False,
+        is_persistent=False,
     )
 
 
@@ -1025,6 +1025,14 @@ def resolve_language_choice(text: str) -> Optional[str]:
         return "en"
 
     return None
+
+
+async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
+        reply_markup=get_language_keyboard(),
+    )
+    return LANG_MENU
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1121,35 +1129,6 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
-async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        t(context, "refreshing"),
-        reply_markup=get_main_menu_keyboard(context),
-    )
-
-    collected = collect_all_vacancies()
-    all_vacancies: List[Vacancy] = []
-    summary_lines = []
-
-    for site, items in collected.items():
-        all_vacancies.extend(items)
-        summary_lines.append(f"{SITE_LABELS[site]}: {len(items)}")
-
-    inserted = save_vacancies(all_vacancies)
-    cleanup_old_vacancies()
-
-    message = t(context, "refresh_done").format(
-        summary="\n".join(summary_lines),
-        inserted=inserted,
-    )
-
-    await update.message.reply_text(
-        message,
-        reply_markup=get_main_menu_keyboard(context),
-    )
-    return MAIN_MENU
-
-
 async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         t(context, "old_jobs_prompt"),
@@ -1221,8 +1200,8 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == normalize_button(t(context, "search_btn")):
         return await handle_search(update, context)
 
-    if text == normalize_button(t(context, "refresh_btn")):
-        return await handle_refresh(update, context)
+    if text == normalize_button(t(context, "change_lang_btn")):
+        return await open_language_menu(update, context)
 
     if text == normalize_button(t(context, "old_btn")):
         return await open_old_jobs_menu(update, context)
@@ -1253,28 +1232,32 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            MessageHandler(filters.Regex("^Start$"), wake_to_main_menu),
+            MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
         ],
         states={
             LANG_MENU: [
+                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language),
             ],
             MAIN_MENU: [
+                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler),
             ],
             OLD_JOBS_MENU: [
+                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, old_jobs_menu_handler),
             ],
         },
         fallbacks=[
             CommandHandler("start", start),
-            MessageHandler(filters.Regex("^Start$"), wake_to_main_menu),
+            MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
         ],
         allow_reentry=True,
     )
 
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("language", open_language_menu))
 
     webhook_path = TOKEN
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
