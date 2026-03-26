@@ -1806,11 +1806,9 @@ def get_language_keyboard():
 
     keyboard = [
 
-        [TEXTS["ru"]["lang_btn_ru"]],
+        [TEXTS["ru"]["lang_btn_az"], TEXTS["ru"]["lang_btn_ru"], TEXTS["ru"]["lang_btn_en"]],
 
-        [TEXTS["ru"]["lang_btn_az"]],
-
-        [TEXTS["ru"]["lang_btn_en"]],
+        [TEXTS["ru"]["start_btn"]],
 
     ]
 
