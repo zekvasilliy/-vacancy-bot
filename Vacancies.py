@@ -1,10 +1,11 @@
 import os
 import re
 import html
+import time
 import logging
 import hashlib
 from datetime import date, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import psycopg
 import requests
@@ -37,7 +38,7 @@ if not DATABASE_URL:
 if not RENDER_EXTERNAL_URL:
     raise ValueError("Не найдена переменная RENDER_EXTERNAL_URL")
 
-MAIN_MENU, OLD_JOBS_MENU = range(2)
+LANG_MENU, MAIN_MENU, OLD_JOBS_MENU = range(3)
 
 SITE_LABELS = {
     "jobsearch": "JobSearch",
@@ -67,11 +68,19 @@ KEYWORDS = [
     "senior legal specialist",
     "lawyer",
     "corporate lawyer",
+    "banking lawyer",
+    "finance lawyer",
     "banking & finance lawyer",
-    "license and permit specialist",
     "compliance",
-    "contract management",
+    "compliance specialist",
     "contract manager",
+    "contract management",
+    "legal officer",
+    "legal associate",
+    "junior lawyer",
+    "senior lawyer",
+    "attorney",
+    "paralegal",
     "vəkil",
     "hüquq",
     "huquq",
@@ -79,7 +88,6 @@ KEYWORDS = [
 
 SITE_URLS = {
     "jobsearch": "https://classic.jobsearch.az/vacancies?category=1375",
-
     "busy_professions": [
         "https://busy.az/professions/huquqsunas",
         "https://busy.az/professions/huquq-meslehetcisi",
@@ -87,8 +95,11 @@ SITE_URLS = {
         "https://busy.az/professions/lawyer",
         "https://busy.az/professions/bas-huquqsunas",
         "https://busy.az/professions/huquqsunas-komekcisi",
+        "https://busy.az/professions/legal-specialist",
+        "https://busy.az/professions/legal-counsel",
+        "https://busy.az/professions/compliance-specialist",
+        "https://busy.az/professions/corporate-lawyer",
     ],
-
     "glorri": "https://jobs.glorri.com/?jobFunctions=legal-services",
     "azvak": "https://azvak.az/vezifeler/huquqsunas/134",
     "hellojob": "https://www.hellojob.az/is-elanlari/huquq",
@@ -101,6 +112,161 @@ HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept-Language": "az,en-US;q=0.9,en;q=0.8,ru;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+
+TEXTS = {
+    "ru": {
+        "choose_language": "Выбери язык:",
+        "welcome": (
+            "Добро пожаловать в бот для поиска вакансий юриста.\n\n"
+            "Этот бот работает по кнопке Start.\n"
+            "После нажатия Start нужно подождать примерно 1 минуту, пока бот проснется.\n"
+            "При каждом новом использовании тоже нужно нажимать Start, чтобы бот проснулся.\n\n"
+            "Что умеет бот:\n"
+            "1. Искать вакансии\n"
+            "2. Обновлять вакансии\n"
+            "3. Показывать архив вакансий по сайтам за последние 2 месяца"
+        ),
+        "help": (
+            "Помощь:\n\n"
+            "Этот бот работает по кнопке Start.\n"
+            "После нажатия Start нужно подождать примерно 1 минуту, пока бот проснется.\n"
+            "При каждом новом использовании нужно снова нажимать Start, чтобы бот проснулся.\n\n"
+            "Как пользоваться:\n"
+            "1. Нажми Start\n"
+            "2. Нажми 'Искать вакансии' для быстрого поиска\n"
+            "3. Нажми 'Обновить вакансии', чтобы заново собрать вакансии и сохранить новые\n"
+            "4. Нажми 'Старые вакансии', затем выбери сайт\n\n"
+            "В архиве название вакансии — синяя кликабельная ссылка.\n"
+            "Показываются вакансии только за последние 2 месяца."
+        ),
+        "bot_awake": "Бот проснулся. Ты в главном меню.",
+        "searching": "Ищу вакансии по всем сайтам. Подожди немного.",
+        "refreshing": "Обновляю вакансии и архив. Подожди немного.",
+        "search_done": "Поиск завершен. Найдено: {found}\nНовых сохранено: {inserted}\n\n",
+        "refresh_done": "Обновление завершено.\n\n{summary}\n\nНовых вакансий сохранено: {inserted}",
+        "old_jobs_prompt": "Выбери сайт, чтобы открыть архив вакансий за последние 2 месяца.",
+        "empty_recent": "Свежих вакансий пока не найдено.",
+        "empty_site": "По сайту {site} вакансий за последние 2 месяца пока нет.",
+        "main_menu": "Главное меню:",
+        "cancelled": "Действие отменено. Ты в главном меню.",
+        "press_button": "Нажми нужную кнопку в меню.",
+        "pick_site_button": "Выбери сайт кнопкой.",
+        "site_label": "Сайт",
+        "date_label": "Дата",
+        "start_btn": "Start",
+        "search_btn": "Искать вакансии",
+        "refresh_btn": "Обновить вакансии",
+        "old_btn": "Старые вакансии",
+        "help_btn": "Помощь",
+        "cancel_btn": "Отмена",
+        "back_btn": "Назад",
+        "lang_btn_ru": "🇷🇺 Русский",
+        "lang_btn_az": "🇦🇿 Azərbaycan",
+        "lang_btn_en": "🇬🇧 English",
+    },
+    "az": {
+        "choose_language": "Dili seçin:",
+        "welcome": (
+            "Hüquqşünas vakansiyalarını axtaran bota xoş gəlmisiniz.\n\n"
+            "Bu bot Start düyməsi ilə işləyir.\n"
+            "Start düyməsinə basdıqdan sonra botun oyanması üçün təxminən 1 dəqiqə gözləmək lazımdır.\n"
+            "Hər yeni istifadədə də botun oyanması üçün yenidən Start düyməsinə basmaq lazımdır.\n\n"
+            "Bot bunları edə bilir:\n"
+            "1. Vakansiyaları axtarmaq\n"
+            "2. Vakansiyaları yeniləmək\n"
+            "3. Son 2 ay üzrə saytlar üzrə vakansiya arxivini göstərmək"
+        ),
+        "help": (
+            "Kömək:\n\n"
+            "Bu bot Start düyməsi ilə işləyir.\n"
+            "Start düyməsinə basdıqdan sonra botun oyanması üçün təxminən 1 dəqiqə gözləmək lazımdır.\n"
+            "Hər yeni istifadədə botun oyanması üçün yenidən Start düyməsinə basmaq lazımdır.\n\n"
+            "İstifadə qaydası:\n"
+            "1. Start düyməsinə basın\n"
+            "2. Sürətli axtarış üçün 'Vakansiyaları axtar' düyməsinə basın\n"
+            "3. Vakansiyaları yenidən toplamaq və yenilərini saxlamaq üçün 'Vakansiyaları yenilə' düyməsinə basın\n"
+            "4. 'Köhnə vakansiyalar' düyməsinə basın, sonra saytı seçin\n\n"
+            "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir.\n"
+            "Yalnız son 2 ayın vakansiyaları göstərilir."
+        ),
+        "bot_awake": "Bot oyandı. Siz əsas menyudasınız.",
+        "searching": "Bütün saytlar üzrə vakansiyalar axtarılır. Bir az gözləyin.",
+        "refreshing": "Vakansiyalar və arxiv yenilənir. Bir az gözləyin.",
+        "search_done": "Axtarış tamamlandı. Tapıldı: {found}\nYeni saxlanıldı: {inserted}\n\n",
+        "refresh_done": "Yeniləmə tamamlandı.\n\n{summary}\n\nYeni vakansiya saxlanıldı: {inserted}",
+        "old_jobs_prompt": "Son 2 ay üzrə vakansiya arxivini açmaq üçün saytı seçin.",
+        "empty_recent": "Hələlik yeni vakansiya tapılmadı.",
+        "empty_site": "{site} saytı üzrə son 2 ayda vakansiya yoxdur.",
+        "main_menu": "Əsas menyu:",
+        "cancelled": "Əməliyyat ləğv edildi. Siz əsas menyudasınız.",
+        "press_button": "Menyudan uyğun düyməni seçin.",
+        "pick_site_button": "Saytı düymə ilə seçin.",
+        "site_label": "Sayt",
+        "date_label": "Tarix",
+        "start_btn": "Start",
+        "search_btn": "Vakansiyaları axtar",
+        "refresh_btn": "Vakansiyaları yenilə",
+        "old_btn": "Köhnə vakansiyalar",
+        "help_btn": "Kömək",
+        "cancel_btn": "Ləğv et",
+        "back_btn": "Geri",
+        "lang_btn_ru": "🇷🇺 Русский",
+        "lang_btn_az": "🇦🇿 Azərbaycan",
+        "lang_btn_en": "🇬🇧 English",
+    },
+    "en": {
+        "choose_language": "Choose a language:",
+        "welcome": (
+            "Welcome to the lawyer vacancy search bot.\n\n"
+            "This bot works with the Start button.\n"
+            "After pressing Start, you need to wait about 1 minute for the bot to wake up.\n"
+            "Each time you use the bot again, you should press Start so that the bot wakes up.\n\n"
+            "What this bot can do:\n"
+            "1. Search vacancies\n"
+            "2. Refresh vacancies\n"
+            "3. Show vacancy archive by website for the last 2 months"
+        ),
+        "help": (
+            "Help:\n\n"
+            "This bot works with the Start button.\n"
+            "After pressing Start, you need to wait about 1 minute for the bot to wake up.\n"
+            "Each time you use the bot again, you should press Start so that the bot wakes up.\n\n"
+            "How to use:\n"
+            "1. Press Start\n"
+            "2. Press 'Search vacancies' for a quick search\n"
+            "3. Press 'Refresh vacancies' to collect vacancies again and save new ones\n"
+            "4. Press 'Old vacancies', then choose a website\n\n"
+            "In the archive, the vacancy title is a blue clickable link.\n"
+            "Only vacancies from the last 2 months are shown."
+        ),
+        "bot_awake": "The bot is awake. You are in the main menu.",
+        "searching": "Searching vacancies across all websites. Please wait.",
+        "refreshing": "Refreshing vacancies and archive. Please wait.",
+        "search_done": "Search completed. Found: {found}\nNew saved: {inserted}\n\n",
+        "refresh_done": "Refresh completed.\n\n{summary}\n\nNew vacancies saved: {inserted}",
+        "old_jobs_prompt": "Choose a website to open the vacancy archive for the last 2 months.",
+        "empty_recent": "No fresh vacancies found yet.",
+        "empty_site": "No vacancies found for {site} in the last 2 months.",
+        "main_menu": "Main menu:",
+        "cancelled": "Action cancelled. You are in the main menu.",
+        "press_button": "Press the needed button in the menu.",
+        "pick_site_button": "Choose a website using the button.",
+        "site_label": "Site",
+        "date_label": "Date",
+        "start_btn": "Start",
+        "search_btn": "Search vacancies",
+        "refresh_btn": "Refresh vacancies",
+        "old_btn": "Old vacancies",
+        "help_btn": "Help",
+        "cancel_btn": "Cancel",
+        "back_btn": "Back",
+        "lang_btn_ru": "🇷🇺 Русский",
+        "lang_btn_az": "🇦🇿 Azərbaycan",
+        "lang_btn_en": "🇬🇧 English",
+    },
 }
 
 
@@ -261,9 +427,19 @@ def month_name_to_number(month_name: str) -> Optional[int]:
 
 def parse_relative_days(raw: str) -> Optional[date]:
     raw = raw.lower()
+
     m = re.search(r"(\d+)\s*gün", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
+
+    m = re.search(r"(\d+)\s*day", raw)
+    if m:
+        return date.today() - timedelta(days=int(m.group(1)))
+
+    m = re.search(r"(\d+)\s*дн", raw)
+    if m:
+        return date.today() - timedelta(days=int(m.group(1)))
+
     return None
 
 
@@ -274,9 +450,9 @@ def parse_date_loose(text: str) -> Optional[date]:
     raw = text.strip().lower()
     today = date.today()
 
-    if "bu gün" in raw or "bugün" in raw or raw == "today":
+    if "bu gün" in raw or "bugün" in raw or raw == "today" or "today" in raw or "сегодня" in raw:
         return today
-    if "dünən" in raw or "dunen" in raw or raw == "yesterday":
+    if "dünən" in raw or "dunen" in raw or raw == "yesterday" or "yesterday" in raw or "вчера" in raw:
         return today - timedelta(days=1)
 
     rel = parse_relative_days(raw)
@@ -286,6 +462,14 @@ def parse_date_loose(text: str) -> Optional[date]:
     m = re.search(r"(\d{2})[-./](\d{2})[-./](\d{4})", raw)
     if m:
         day_num, month_num, year_num = map(int, m.groups())
+        try:
+            return date(year_num, month_num, day_num)
+        except ValueError:
+            return None
+
+    m = re.search(r"(\d{4})[-./](\d{2})[-./](\d{2})", raw)
+    if m:
+        year_num, month_num, day_num = map(int, m.groups())
         try:
             return date(year_num, month_num, day_num)
         except ValueError:
@@ -353,7 +537,7 @@ def absolute_url(base: str, url: str) -> str:
 
 def fetch_html(url: str) -> Optional[str]:
     try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
+        response = requests.get(url, headers=HEADERS, timeout=35)
         if response.status_code == 403:
             logger.warning("Сайт вернул 403: %s", url)
             return None
@@ -368,13 +552,16 @@ def looks_like_noise(title: str) -> bool:
     t = normalize_text(title)
     if not t:
         return True
+
     noise = {
         "haqqımızda", "xidmətlər", "əlaqə", "ana səhifə", "vakansiyalar",
         "şirkətlər", "vəzifələr", "hamısı", "hüquq", "müraciət et",
         "elan yerləşdir", "axtar", "sıfırla", "help", "latest vacancies",
         "kateqoriyalar", "sənaye", "seçilmiş elanlar", "uyğun iş elanları",
         "işə aid seçimlər", "vakansiya axtarışı", "seç", "sil",
-        "tam iş günü", "razılaşma yolu ilə"
+        "tam iş günü", "razılaşma yolu ilə", "full time", "part time",
+        "internship", "remote", "hybrid", "all vacancies", "all jobs",
+        "iş elanları", "jobs", "job", "vacancy", "vakansiya"
     }
     return t in noise or len(t) < 3
 
@@ -382,14 +569,27 @@ def looks_like_noise(title: str) -> bool:
 def deduplicate_vacancies(vacancies: List[Vacancy]) -> List[Vacancy]:
     seen = set()
     result = []
+
     for v in vacancies:
-        key = (v.site, normalize_text(v.title), v.url)
+        normalized_title = normalize_text(v.title)
+        cleaned_url = v.url.rstrip("/")
+        key = (v.site, normalized_title, cleaned_url)
+
         if key in seen:
             continue
         seen.add(key)
+
+        if looks_like_noise(v.title):
+            continue
+        if not is_legal_vacancy(v.title):
+            continue
+        if not cleaned_url:
+            continue
         if not is_fresh_enough(v.published_date):
             continue
+
         result.append(v)
+
     return result
 
 
@@ -429,7 +629,7 @@ def parse_jobsearch() -> List[Vacancy]:
                 published_date = parsed
                 break
 
-        key = (normalize_text(title), url)
+        key = (normalize_text(title), url.rstrip("/"))
         if key in seen:
             continue
 
@@ -438,6 +638,26 @@ def parse_jobsearch() -> List[Vacancy]:
 
     logger.info("JOBSEARCH FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
+
+
+def extract_busy_date_from_context(text: str) -> Optional[date]:
+    raw = clean_title(text)
+
+    patterns = [
+        r"(\d{2}[./-]\d{2}[./-]\d{4})",
+        r"(\d{4}[./-]\d{2}[./-]\d{2})",
+        r"(bugün|bu gün|dünən|\d+\s+gün əvvəl)",
+        r"(today|yesterday|\d+\s+days?\s+ago)",
+    ]
+
+    for pattern in patterns:
+        m = re.search(pattern, raw, re.IGNORECASE)
+        if m:
+            parsed = parse_date_loose(m.group(1))
+            if parsed:
+                return parsed
+
+    return extract_dates_from_text(raw)
 
 
 def parse_busy_page(url: str) -> List[Vacancy]:
@@ -449,38 +669,17 @@ def parse_busy_page(url: str) -> List[Vacancy]:
     vacancies: List[Vacancy] = []
     seen = set()
 
-    page_text = clean_title(soup.get_text(" ", strip=True))
+    selectors = [
+        'a[href*="/vacancy/"]',
+        'a[href*="/jobs/"]',
+        'a[href^="/vacancy/"]',
+    ]
 
-    def extract_busy_date_near_title(title: str) -> Optional[date]:
-        escaped_title = re.escape(title)
+    links = []
+    for selector in selectors:
+        links.extend(soup.select(selector))
 
-        patterns = [
-            rf"{escaped_title}.*?(bugün|dünən|\d+\s+gün əvvəl)",
-            rf"{escaped_title}.*?(\d{{2}}[./-]\d{{2}}[./-]\d{{4}})",
-            rf"{escaped_title}.*?Published[:\s]+(\d{{4}}\s*M\d{{2}}\s*\d{{2}})",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, page_text, re.IGNORECASE)
-            if match:
-                raw = match.group(1).strip().lower()
-
-                if raw == "bugün":
-                    return date.today()
-                if raw == "dünən":
-                    return date.today() - timedelta(days=1)
-
-                m = re.search(r"(\d+)\s+gün əvvəl", raw)
-                if m:
-                    return date.today() - timedelta(days=int(m.group(1)))
-
-                parsed = parse_date_loose(raw)
-                if parsed:
-                    return parsed
-
-        return None
-
-    for a in soup.select('a[href*="/vacancy/"]'):
+    for a in links:
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
 
@@ -492,9 +691,26 @@ def parse_busy_page(url: str) -> List[Vacancy]:
             continue
 
         full_url = absolute_url("https://busy.az", href)
-        published_date = extract_busy_date_near_title(title)
+        published_date = None
 
-        key = (normalize_text(title), full_url)
+        containers = []
+        if a.parent:
+            containers.append(a.parent)
+        if a.parent and a.parent.parent:
+            containers.append(a.parent.parent)
+        if a.parent and a.parent.parent and a.parent.parent.parent:
+            containers.append(a.parent.parent.parent)
+        if a.parent and a.parent.parent and a.parent.parent.parent and a.parent.parent.parent.parent:
+            containers.append(a.parent.parent.parent.parent)
+
+        for container in containers:
+            context = clean_title(container.get_text(" ", strip=True))
+            parsed = extract_busy_date_from_context(context)
+            if parsed:
+                published_date = parsed
+                break
+
+        key = (normalize_text(title), full_url.rstrip("/"))
         if key in seen:
             continue
 
@@ -502,16 +718,21 @@ def parse_busy_page(url: str) -> List[Vacancy]:
         seen.add(key)
 
     logger.info("BUSY PAGE %s FOUND %s", url, len(vacancies))
-    for item in vacancies[:10]:
-        logger.info("BUSY ITEM %s | %s | %s", item.title, item.url, item.published_date)
-
     return deduplicate_vacancies(vacancies)
 
 
 def parse_busy() -> List[Vacancy]:
     items = []
+
     for url in SITE_URLS["busy_professions"]:
-        items.extend(parse_busy_page(url))
+        try:
+            parsed = parse_busy_page(url)
+            items.extend(parsed)
+            time.sleep(0.4)
+        except Exception as e:
+            logger.error("BUSY parse error for %s: %s", url, e)
+
+    logger.info("BUSY TOTAL FOUND %s", len(items))
     return deduplicate_vacancies(items)
 
 
@@ -542,6 +763,7 @@ def parse_glorri() -> List[Vacancy]:
 
         vacancies.append(Vacancy("glorri", title, url, published_date))
 
+    logger.info("GLORRI FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
@@ -577,7 +799,7 @@ def parse_azvak() -> List[Vacancy]:
             continue
 
         published_date = None
-        for j in range(i + 1, min(i + 7, len(lines))):
+        for j in range(i + 1, min(i + 8, len(lines))):
             possible_date = parse_date_loose(lines[j])
             if possible_date:
                 published_date = possible_date
@@ -614,26 +836,61 @@ def parse_hellojob() -> List[Vacancy]:
 
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
+    seen = set()
 
-    for a in soup.select('a[href*="/is-elanlari/"]'):
-        href = a.get("href") or ""
+    selectors = [
+        'a[href*="/is-elanlari/"]',
+        'a[href^="/is-elanlari/"]',
+        'a[href*="vakans"]',
+    ]
+
+    links = []
+    for selector in selectors:
+        links.extend(soup.select(selector))
+
+    for a in links:
+        href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
 
         if not href or not title:
             continue
-        if "/is-elanlari/huquq" in href:
+
+        if href.rstrip("/") == "/is-elanlari/huquq":
             continue
+
         if looks_like_noise(title):
+            continue
+        if not is_legal_vacancy(title):
             continue
 
         url = absolute_url("https://www.hellojob.az", href)
-        context = clean_title(a.parent.get_text(" ", strip=True)) if a.parent else title
+        published_date = None
+
+        containers = []
+        if a.parent:
+            containers.append(a.parent)
         if a.parent and a.parent.parent:
-            context += " " + clean_title(a.parent.parent.get_text(" ", strip=True))
-        published_date = extract_dates_from_text(context)
+            containers.append(a.parent.parent)
+        if a.parent and a.parent.parent and a.parent.parent.parent:
+            containers.append(a.parent.parent.parent)
+        if a.parent and a.parent.parent and a.parent.parent.parent and a.parent.parent.parent.parent:
+            containers.append(a.parent.parent.parent.parent)
+
+        for container in containers:
+            context = clean_title(container.get_text(" ", strip=True))
+            parsed = extract_dates_from_text(context)
+            if parsed:
+                published_date = parsed
+                break
+
+        key = (normalize_text(title), url.rstrip("/"))
+        if key in seen:
+            continue
 
         vacancies.append(Vacancy("hellojob", title, url, published_date))
+        seen.add(key)
 
+    logger.info("HELLOJOB FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
@@ -654,63 +911,70 @@ def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
     return result
 
 
-def get_main_menu_keyboard():
+def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return context.user_data.get("lang", "ru")
+
+
+def t(context: ContextTypes.DEFAULT_TYPE, key: str) -> str:
+    lang = get_lang(context)
+    return TEXTS.get(lang, TEXTS["ru"]).get(key, key)
+
+
+def get_language_keyboard():
     keyboard = [
-        ["Искать вакансии", "Обновить вакансии"],
-        ["Старые вакансии", "Помощь"],
-        ["Start", "Отмена"],
+        [TEXTS["ru"]["lang_btn_ru"]],
+        [TEXTS["ru"]["lang_btn_az"]],
+        [TEXTS["ru"]["lang_btn_en"]],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
         one_time_keyboard=True,
-        is_persistent=False,
+        is_persistent=True,
     )
 
 
-def get_old_jobs_keyboard():
+def get_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [t(context, "search_btn"), t(context, "refresh_btn")],
+        [t(context, "old_btn"), t(context, "help_btn")],
+        [t(context, "start_btn"), t(context, "cancel_btn")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def get_old_jobs_keyboard(context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["JobSearch", "Busy.az"],
         ["Glorri", "Azvak"],
         ["HelloJob"],
-        ["Start", "Назад", "Отмена"],
+        [t(context, "start_btn"), t(context, "back_btn"), t(context, "cancel_btn")],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
         one_time_keyboard=True,
-        is_persistent=False,
+        is_persistent=True,
     )
 
 
-WELCOME_TEXT = (
-    "Добро пожаловать в бот для поиска вакансий юриста.\n\n"
-    "Что умеет бот:\n"
-    "1. Искать новые вакансии\n"
-    "2. Обновлять вакансии\n"
-    "3. Показывать архив по сайтам за последние 2 месяца\n\n"
-    "Кнопка Start оставлена на случай, если бесплатный хостинг уснет."
-)
-
-HELP_TEXT = (
-    "Как пользоваться ботом:\n\n"
-    "1. Нажми Start, если бот уснул\n"
-    "2. Нажми 'Искать вакансии' для быстрого поиска\n"
-    "3. Нажми 'Обновить вакансии', чтобы заново собрать вакансии и сохранить новые\n"
-    "4. Нажми 'Старые вакансии', затем выбери сайт\n\n"
-    "В архиве название вакансии — синяя кликабельная ссылка.\n"
-    "Показываются вакансии только за последние 2 месяца."
-)
-
-
-def format_vacancy_lines_html(vacancies: List[Dict], empty_text: str) -> str:
+def format_vacancy_lines_html(
+    vacancies: List[Dict],
+    empty_text: str,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> str:
     if not vacancies:
         return html.escape(empty_text)
 
     lines = []
     for idx, item in enumerate(vacancies, start=1):
         display_date = item["published_date"] or item["found_date"]
-        date_str = display_date.strftime("%Y-%m-%d") if display_date else "дата не указана"
+        date_str = display_date.strftime("%Y-%m-%d") if display_date else "-"
 
         safe_title = html.escape(item["title"])
         safe_site = html.escape(SITE_LABELS.get(item["site"], item["site"]))
@@ -718,8 +982,8 @@ def format_vacancy_lines_html(vacancies: List[Dict], empty_text: str) -> str:
 
         lines.append(
             f"{idx}. <a href=\"{safe_url}\">{safe_title}</a>\n"
-            f"Сайт: {safe_site}\n"
-            f"Дата: {date_str}"
+            f"{html.escape(t(context, 'site_label'))}: {safe_site}\n"
+            f"{html.escape(t(context, 'date_label'))}: {date_str}"
         )
     return "\n\n".join(lines)
 
@@ -730,6 +994,7 @@ def split_long_message(text: str, limit: int = 3500) -> List[str]:
 
     parts = []
     current = ""
+
     for block in text.split("\n\n"):
         candidate = block if not current else current + "\n\n" + block
         if len(candidate) <= limit:
@@ -745,26 +1010,92 @@ def split_long_message(text: str, limit: int = 3500) -> List[str]:
     return parts
 
 
+def normalize_button(text: str) -> str:
+    return clean_title(text)
+
+
+def resolve_language_choice(text: str) -> Optional[str]:
+    value = normalize_button(text)
+
+    if value == normalize_button(TEXTS["ru"]["lang_btn_ru"]):
+        return "ru"
+    if value == normalize_button(TEXTS["ru"]["lang_btn_az"]):
+        return "az"
+    if value == normalize_button(TEXTS["ru"]["lang_btn_en"]):
+        return "en"
+
+    return None
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME_TEXT, reply_markup=get_main_menu_keyboard())
+    if "lang" not in context.user_data:
+        await update.message.reply_text(
+            TEXTS["ru"]["choose_language"],
+            reply_markup=get_language_keyboard(),
+        )
+        return LANG_MENU
+
+    await update.message.reply_text(
+        t(context, "welcome"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
+    return MAIN_MENU
+
+
+async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    selected = resolve_language_choice(update.message.text)
+
+    if not selected:
+        await update.message.reply_text(
+            TEXTS["ru"]["choose_language"],
+            reply_markup=get_language_keyboard(),
+        )
+        return LANG_MENU
+
+    context.user_data["lang"] = selected
+
+    await update.message.reply_text(
+        t(context, "welcome"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
     return MAIN_MENU
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP_TEXT, reply_markup=get_main_menu_keyboard())
+    if "lang" not in context.user_data:
+        await update.message.reply_text(
+            TEXTS["ru"]["choose_language"],
+            reply_markup=get_language_keyboard(),
+        )
+        return LANG_MENU
+
+    await update.message.reply_text(
+        t(context, "help"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
     return MAIN_MENU
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "lang" not in context.user_data:
+        await update.message.reply_text(
+            TEXTS["ru"]["choose_language"],
+            reply_markup=get_language_keyboard(),
+        )
+        return LANG_MENU
+
     await update.message.reply_text(
-        "Бот проснулся. Ты в главном меню.",
-        reply_markup=get_main_menu_keyboard(),
+        t(context, "bot_awake"),
+        reply_markup=get_main_menu_keyboard(context),
     )
     return MAIN_MENU
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Ищу вакансии по всем сайтам. Подожди немного.")
+    await update.message.reply_text(
+        t(context, "searching"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
 
     collected = collect_all_vacancies()
     all_vacancies: List[Vacancy] = []
@@ -775,17 +1106,14 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleanup_old_vacancies()
 
     recent = get_recent_vacancies(limit=1000)
-    text = format_vacancy_lines_html(recent, "Свежих вакансий пока не найдено.")
+    text = format_vacancy_lines_html(recent, t(context, "empty_recent"), context)
 
-    header = (
-        f"Поиск завершен. Найдено: {len(all_vacancies)}\n"
-        f"Новых сохранено: {inserted}\n\n"
-    )
+    header = t(context, "search_done").format(found=len(all_vacancies), inserted=inserted)
 
     for chunk in split_long_message(header + text):
         await update.message.reply_text(
             chunk,
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(context),
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
@@ -794,7 +1122,10 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Обновляю вакансии и архив. Подожди немного.")
+    await update.message.reply_text(
+        t(context, "refreshing"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
 
     collected = collect_all_vacancies()
     all_vacancies: List[Vacancy] = []
@@ -807,37 +1138,43 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     inserted = save_vacancies(all_vacancies)
     cleanup_old_vacancies()
 
-    message = (
-        "Обновление завершено.\n\n"
-        + "\n".join(summary_lines)
-        + f"\n\nНовых вакансий сохранено: {inserted}"
+    message = t(context, "refresh_done").format(
+        summary="\n".join(summary_lines),
+        inserted=inserted,
     )
-    await update.message.reply_text(message, reply_markup=get_main_menu_keyboard())
+
+    await update.message.reply_text(
+        message,
+        reply_markup=get_main_menu_keyboard(context),
+    )
     return MAIN_MENU
 
 
 async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Выбери сайт, чтобы открыть архив вакансий за последние 2 месяца.",
-        reply_markup=get_old_jobs_keyboard(),
+        t(context, "old_jobs_prompt"),
+        reply_markup=get_old_jobs_keyboard(context),
     )
     return OLD_JOBS_MENU
 
 
 async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = normalize_button(update.message.text)
 
-    if text == "Start":
+    if text == normalize_button(t(context, "start_btn")):
         return await wake_to_main_menu(update, context)
 
-    if text == "Назад":
-        await update.message.reply_text("Главное меню:", reply_markup=get_main_menu_keyboard())
+    if text == normalize_button(t(context, "back_btn")):
+        await update.message.reply_text(
+            t(context, "main_menu"),
+            reply_markup=get_main_menu_keyboard(context),
+        )
         return MAIN_MENU
 
-    if text == "Отмена":
+    if text == normalize_button(t(context, "cancel_btn")):
         await update.message.reply_text(
-            "Действие отменено. Ты в главном меню.",
-            reply_markup=get_main_menu_keyboard(),
+            t(context, "cancelled"),
+            reply_markup=get_main_menu_keyboard(context),
         )
         return MAIN_MENU
 
@@ -849,21 +1186,25 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
         "HelloJob": "hellojob",
     }
 
-    if text not in map_text_to_site:
-        await update.message.reply_text("Выбери сайт кнопкой.", reply_markup=get_old_jobs_keyboard())
+    if update.message.text not in map_text_to_site:
+        await update.message.reply_text(
+            t(context, "pick_site_button"),
+            reply_markup=get_old_jobs_keyboard(context),
+        )
         return OLD_JOBS_MENU
 
-    site = map_text_to_site[text]
+    site = map_text_to_site[update.message.text]
     rows = get_recent_vacancies_by_site(site, limit=1000)
     body = format_vacancy_lines_html(
         rows,
-        f"По сайту {text} вакансий за последние 2 месяца пока нет."
+        t(context, "empty_site").format(site=update.message.text),
+        context,
     )
 
     for chunk in split_long_message(body):
         await update.message.reply_text(
             chunk,
-            reply_markup=get_old_jobs_keyboard(),
+            reply_markup=get_old_jobs_keyboard(context),
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
@@ -872,33 +1213,33 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = normalize_button(update.message.text)
 
-    if text == "Start":
+    if text == normalize_button(t(context, "start_btn")):
         return await wake_to_main_menu(update, context)
 
-    if text == "Искать вакансии":
+    if text == normalize_button(t(context, "search_btn")):
         return await handle_search(update, context)
 
-    if text == "Обновить вакансии":
+    if text == normalize_button(t(context, "refresh_btn")):
         return await handle_refresh(update, context)
 
-    if text == "Старые вакансии":
+    if text == normalize_button(t(context, "old_btn")):
         return await open_old_jobs_menu(update, context)
 
-    if text == "Помощь":
+    if text == normalize_button(t(context, "help_btn")):
         return await help_command(update, context)
 
-    if text == "Отмена":
+    if text == normalize_button(t(context, "cancel_btn")):
         await update.message.reply_text(
-            "Действие отменено. Ты в главном меню.",
-            reply_markup=get_main_menu_keyboard(),
+            t(context, "cancelled"),
+            reply_markup=get_main_menu_keyboard(context),
         )
         return MAIN_MENU
 
     await update.message.reply_text(
-        "Нажми нужную кнопку в меню.",
-        reply_markup=get_main_menu_keyboard(),
+        t(context, "press_button"),
+        reply_markup=get_main_menu_keyboard(context),
     )
     return MAIN_MENU
 
@@ -915,13 +1256,19 @@ def main():
             MessageHandler(filters.Regex("^Start$"), wake_to_main_menu),
         ],
         states={
-            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler)],
-            OLD_JOBS_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, old_jobs_menu_handler)],
+            LANG_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language),
+            ],
+            MAIN_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler),
+            ],
+            OLD_JOBS_MENU: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, old_jobs_menu_handler),
+            ],
         },
         fallbacks=[
             CommandHandler("start", start),
             MessageHandler(filters.Regex("^Start$"), wake_to_main_menu),
-            MessageHandler(filters.Regex("^Отмена$"), main_menu_handler),
         ],
         allow_reentry=True,
     )
