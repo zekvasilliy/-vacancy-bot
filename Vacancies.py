@@ -6,6 +6,7 @@ import logging
 import hashlib
 from datetime import date, timedelta
 from typing import List, Dict, Optional
+
 import psycopg
 import requests
 from bs4 import BeautifulSoup
@@ -297,34 +298,6 @@ def init_db():
                 )
                 """
             )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS bot_users (
-                    telegram_id BIGINT PRIMARY KEY,
-                    first_seen TIMESTAMP NOT NULL DEFAULT NOW(),
-                    last_seen TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-        conn.commit()
-
-
-def register_user(update: Update):
-    user = update.effective_user
-    if not user:
-        return
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO bot_users (telegram_id, first_seen, last_seen)
-                VALUES (%s, NOW(), NOW())
-                ON CONFLICT (telegram_id)
-                DO UPDATE SET last_seen = NOW()
-                """,
-                (user.id,),
-            )
         conn.commit()
 
 
@@ -373,6 +346,7 @@ def get_recent_vacancies(limit: int = 1000) -> List[Dict]:
                 (border, limit),
             )
             rows = cur.fetchall()
+
     return [
         {
             "site": site,
@@ -400,6 +374,7 @@ def get_recent_vacancies_by_site(site: str, limit: int = 1000) -> List[Dict]:
                 (site, border, limit),
             )
             rows = cur.fetchall()
+
     return [
         {
             "site": site_name,
@@ -448,24 +423,30 @@ def month_name_to_number(month_name: str) -> Optional[int]:
 
 def parse_relative_days(raw: str) -> Optional[date]:
     raw = raw.lower()
+
     m = re.search(r"(\d+)\s*gün", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
+
     m = re.search(r"(\d+)\s*day", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
+
     m = re.search(r"(\d+)\s*days", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
+
     m = re.search(r"(\d+)\s*дн", raw)
     if m:
         return date.today() - timedelta(days=int(m.group(1)))
+
     return None
 
 
 def parse_date_loose(text: str) -> Optional[date]:
     if not text:
         return None
+
     raw = text.strip().lower()
     today = date.today()
 
@@ -571,6 +552,7 @@ def looks_like_noise(title: str) -> bool:
     t = normalize_text(title)
     if not t:
         return True
+
     noise = {
         "haqqımızda", "xidmətlər", "əlaqə", "ana səhifə", "vakansiyalar",
         "şirkətlər", "vəzifələr", "hamısı", "hüquq", "müraciət et",
@@ -587,13 +569,16 @@ def looks_like_noise(title: str) -> bool:
 def deduplicate_vacancies(vacancies: List[Vacancy]) -> List[Vacancy]:
     seen = set()
     result = []
+
     for v in vacancies:
         normalized_title = normalize_text(v.title)
         cleaned_url = v.url.rstrip("/")
         key = (v.site, normalized_title, cleaned_url)
+
         if key in seen:
             continue
         seen.add(key)
+
         if looks_like_noise(v.title):
             continue
         if not is_legal_vacancy(v.title):
@@ -602,7 +587,9 @@ def deduplicate_vacancies(vacancies: List[Vacancy]) -> List[Vacancy]:
             continue
         if not is_fresh_enough(v.published_date):
             continue
+
         result.append(v)
+
     return result
 
 
@@ -610,18 +597,23 @@ def parse_jobsearch() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["jobsearch"])
     if not html_text:
         return []
+
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     seen = set()
+
     for a in soup.select('a[href*="/vacancies/"]'):
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
+
         if not href or not title or href == "/vacancies":
             continue
         if looks_like_noise(title) or not is_legal_vacancy(title):
             continue
+
         url = absolute_url("https://classic.jobsearch.az", href)
         published_date = None
+
         containers = []
         if a.parent:
             containers.append(a.parent)
@@ -629,35 +621,42 @@ def parse_jobsearch() -> List[Vacancy]:
             containers.append(a.parent.parent)
         if a.parent and a.parent.parent and a.parent.parent.parent:
             containers.append(a.parent.parent.parent)
+
         for container in containers:
             context = clean_title(container.get_text(" ", strip=True))
             parsed = extract_dates_from_text(context)
             if parsed:
                 published_date = parsed
                 break
+
         key = (normalize_text(title), url.rstrip("/"))
         if key in seen:
             continue
+
         vacancies.append(Vacancy("jobsearch", title, url, published_date))
         seen.add(key)
+
     logger.info("JOBSEARCH FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
 def extract_busy_date_from_context(text: str) -> Optional[date]:
     raw = clean_title(text)
+
     patterns = [
         r"(\d{2}[./-]\d{2}[./-]\d{4})",
         r"(\d{4}[./-]\d{2}[./-]\d{2})",
         r"(bugün|bu gün|dünən|\d+\s+gün əvvəl)",
         r"(today|yesterday|\d+\s+days?\s+ago)",
     ]
+
     for pattern in patterns:
         m = re.search(pattern, raw, re.IGNORECASE)
         if m:
             parsed = parse_date_loose(m.group(1))
             if parsed:
                 return parsed
+
     return extract_dates_from_text(raw)
 
 
@@ -665,28 +664,35 @@ def parse_busy_page(url: str) -> List[Vacancy]:
     html_text = fetch_html(url)
     if not html_text:
         return []
+
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     seen = set()
+
     selectors = [
         'a[href*="/vacancy/"]',
         'a[href*="/jobs/"]',
         'a[href^="/vacancy/"]',
     ]
+
     links = []
     for selector in selectors:
         links.extend(soup.select(selector))
+
     for a in links:
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
+
         if not href or not title:
             continue
         if looks_like_noise(title):
             continue
         if not is_legal_vacancy(title):
             continue
+
         full_url = absolute_url("https://busy.az", href)
         published_date = None
+
         containers = []
         if a.parent:
             containers.append(a.parent)
@@ -696,23 +702,28 @@ def parse_busy_page(url: str) -> List[Vacancy]:
             containers.append(a.parent.parent.parent)
         if a.parent and a.parent.parent and a.parent.parent.parent and a.parent.parent.parent.parent:
             containers.append(a.parent.parent.parent.parent)
+
         for container in containers:
             context = clean_title(container.get_text(" ", strip=True))
             parsed = extract_busy_date_from_context(context)
             if parsed:
                 published_date = parsed
                 break
+
         key = (normalize_text(title), full_url.rstrip("/"))
         if key in seen:
             continue
+
         vacancies.append(Vacancy("busy", title, full_url, published_date))
         seen.add(key)
+
     logger.info("BUSY PAGE %s FOUND %s", url, len(vacancies))
     return deduplicate_vacancies(vacancies)
 
 
 def parse_busy() -> List[Vacancy]:
     items = []
+
     for url in SITE_URLS["busy_professions"]:
         try:
             parsed = parse_busy_page(url)
@@ -720,6 +731,7 @@ def parse_busy() -> List[Vacancy]:
             time.sleep(0.4)
         except Exception as e:
             logger.error("BUSY parse error for %s: %s", url, e)
+
     logger.info("BUSY TOTAL FOUND %s", len(items))
     return deduplicate_vacancies(items)
 
@@ -728,22 +740,29 @@ def parse_glorri() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["glorri"])
     if not html_text:
         return []
+
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
+
     for a in soup.select("a[href]"):
         href = a.get("href") or ""
         title = clean_title(a.get_text(" ", strip=True))
+
         if not href or not title:
             continue
         if looks_like_noise(title) or not is_legal_vacancy(title):
             continue
+
         url = absolute_url("https://jobs.glorri.com", href)
         published_date = None
+
         if a.parent:
             published_date = extract_dates_from_text(a.parent.get_text(" ", strip=True))
             if not published_date and a.parent.parent:
                 published_date = extract_dates_from_text(a.parent.parent.get_text(" ", strip=True))
+
         vacancies.append(Vacancy("glorri", title, url, published_date))
+
     logger.info("GLORRI FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
@@ -752,47 +771,60 @@ def parse_azvak() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["azvak"])
     if not html_text:
         return []
+
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     lines = []
+
     for raw_line in soup.get_text("\n", strip=True).splitlines():
         line = clean_title(raw_line)
         if line:
             lines.append(line)
+
     link_candidates = []
     for a in soup.select("a[href]"):
         href = a.get("href") or ""
         text = clean_title(a.get_text(" ", strip=True))
         if href and text:
             link_candidates.append((normalize_text(text), absolute_url("https://azvak.az", href)))
+
     seen_titles = set()
+
     for i, line in enumerate(lines):
         title = clean_title(line)
+
         if looks_like_noise(title) or not is_legal_vacancy(title):
             continue
         if title in seen_titles:
             continue
+
         published_date = None
         for j in range(i + 1, min(i + 8, len(lines))):
             possible_date = parse_date_loose(lines[j])
             if possible_date:
                 published_date = possible_date
                 break
+
         matched_url = None
         normalized_title = normalize_text(title)
+
         for link_text, link_url in link_candidates:
             if link_text == normalized_title:
                 matched_url = link_url
                 break
+
         if not matched_url:
             for link_text, link_url in link_candidates:
                 if normalized_title in link_text or link_text in normalized_title:
                     matched_url = link_url
                     break
+
         if not matched_url:
             matched_url = SITE_URLS["azvak"]
+
         vacancies.append(Vacancy("azvak", title, matched_url, published_date))
         seen_titles.add(title)
+
     logger.info("AZVAK FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
@@ -801,30 +833,39 @@ def parse_hellojob() -> List[Vacancy]:
     html_text = fetch_html(SITE_URLS["hellojob"])
     if not html_text:
         return []
+
     soup = BeautifulSoup(html_text, "html.parser")
     vacancies: List[Vacancy] = []
     seen = set()
+
     selectors = [
         'a[href*="/is-elanlari/"]',
         'a[href^="/is-elanlari/"]',
         'a[href*="vakans"]',
     ]
+
     links = []
     for selector in selectors:
         links.extend(soup.select(selector))
+
     for a in links:
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
+
         if not href or not title:
             continue
+
         if href.rstrip("/") == "/is-elanlari/huquq":
             continue
+
         if looks_like_noise(title):
             continue
         if not is_legal_vacancy(title):
             continue
+
         url = absolute_url("https://www.hellojob.az", href)
         published_date = None
+
         containers = []
         if a.parent:
             containers.append(a.parent)
@@ -834,17 +875,21 @@ def parse_hellojob() -> List[Vacancy]:
             containers.append(a.parent.parent.parent)
         if a.parent and a.parent.parent and a.parent.parent.parent and a.parent.parent.parent.parent:
             containers.append(a.parent.parent.parent.parent)
+
         for container in containers:
             context = clean_title(container.get_text(" ", strip=True))
             parsed = extract_dates_from_text(context)
             if parsed:
                 published_date = parsed
                 break
+
         key = (normalize_text(title), url.rstrip("/"))
         if key in seen:
             continue
+
         vacancies.append(Vacancy("hellojob", title, url, published_date))
         seen.add(key)
+
     logger.info("HELLOJOB FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
 
@@ -857,10 +902,12 @@ def collect_all_vacancies() -> Dict[str, List[Vacancy]]:
         "azvak": parse_azvak(),
         "hellojob": parse_hellojob(),
     }
+
     for site, items in result.items():
         logger.info("SITE %s FOUND %s", site, len(items))
         for item in items[:10]:
             logger.info("SITE %s ITEM %s | %s", site, item.title, item.url)
+
     return result
 
 
@@ -923,13 +970,16 @@ def format_vacancy_lines_html(
 ) -> str:
     if not vacancies:
         return html.escape(empty_text)
+
     lines = []
     for idx, item in enumerate(vacancies, start=1):
         display_date = item["published_date"] or item["found_date"]
         date_str = display_date.strftime("%Y-%m-%d") if display_date else "-"
+
         safe_title = html.escape(item["title"])
         safe_site = html.escape(SITE_LABELS.get(item["site"], item["site"]))
         safe_url = html.escape(item["url"])
+
         lines.append(
             f"{idx}. <a href=\"{safe_url}\">{safe_title}</a>\n"
             f"{html.escape(t(context, 'site_label'))}: {safe_site}\n"
@@ -941,8 +991,10 @@ def format_vacancy_lines_html(
 def split_long_message(text: str, limit: int = 3500) -> List[str]:
     if len(text) <= limit:
         return [text]
+
     parts = []
     current = ""
+
     for block in text.split("\n\n"):
         candidate = block if not current else current + "\n\n" + block
         if len(candidate) <= limit:
@@ -951,8 +1003,10 @@ def split_long_message(text: str, limit: int = 3500) -> List[str]:
             if current:
                 parts.append(current)
             current = block
+
     if current:
         parts.append(current)
+
     return parts
 
 
@@ -962,17 +1016,18 @@ def normalize_button(text: str) -> str:
 
 def resolve_language_choice(text: str) -> Optional[str]:
     value = normalize_button(text)
+
     if value == normalize_button(TEXTS["ru"]["lang_btn_ru"]):
         return "ru"
     if value == normalize_button(TEXTS["ru"]["lang_btn_az"]):
         return "az"
     if value == normalize_button(TEXTS["ru"]["lang_btn_en"]):
         return "en"
+
     return None
 
 
 async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     await update.message.reply_text(
         t(context, "choose_language") if "lang" in context.user_data else TEXTS["ru"]["choose_language"],
         reply_markup=get_language_keyboard(),
@@ -981,13 +1036,13 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
+
     await update.message.reply_text(
         t(context, "welcome"),
         reply_markup=get_main_menu_keyboard(context),
@@ -996,15 +1051,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     selected = resolve_language_choice(update.message.text)
+
     if not selected:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
+
     context.user_data["lang"] = selected
+
     await update.message.reply_text(
         t(context, "welcome"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1013,13 +1070,13 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
+
     await update.message.reply_text(
         t(context, "help"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1028,13 +1085,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     if "lang" not in context.user_data:
         await update.message.reply_text(
             TEXTS["ru"]["choose_language"],
             reply_markup=get_language_keyboard(),
         )
         return LANG_MENU
+
     await update.message.reply_text(
         t(context, "bot_awake"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1043,20 +1100,24 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     await update.message.reply_text(
         t(context, "searching"),
         reply_markup=get_main_menu_keyboard(context),
     )
+
     collected = collect_all_vacancies()
     all_vacancies: List[Vacancy] = []
     for _, items in collected.items():
         all_vacancies.extend(items)
+
     inserted = save_vacancies(all_vacancies)
     cleanup_old_vacancies()
+
     recent = get_recent_vacancies(limit=1000)
     text = format_vacancy_lines_html(recent, t(context, "empty_recent"), context)
+
     header = t(context, "search_done").format(found=len(all_vacancies), inserted=inserted)
+
     for chunk in split_long_message(header + text):
         await update.message.reply_text(
             chunk,
@@ -1064,11 +1125,11 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
+
     return MAIN_MENU
 
 
 async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     await update.message.reply_text(
         t(context, "old_jobs_prompt"),
         reply_markup=get_old_jobs_keyboard(context),
@@ -1077,16 +1138,18 @@ async def open_old_jobs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     text = normalize_button(update.message.text)
+
     if text == normalize_button(t(context, "start_btn")):
         return await wake_to_main_menu(update, context)
+
     if text == normalize_button(t(context, "back_btn")):
         await update.message.reply_text(
             t(context, "main_menu"),
             reply_markup=get_main_menu_keyboard(context),
         )
         return MAIN_MENU
+
     if text == normalize_button(t(context, "cancel_btn")):
         await update.message.reply_text(
             t(context, "cancelled"),
@@ -1101,6 +1164,7 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
         "Azvak": "azvak",
         "HelloJob": "hellojob",
     }
+
     if update.message.text not in map_text_to_site:
         await update.message.reply_text(
             t(context, "pick_site_button"),
@@ -1115,6 +1179,7 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
         t(context, "empty_site").format(site=update.message.text),
         context,
     )
+
     for chunk in split_long_message(body):
         await update.message.reply_text(
             chunk,
@@ -1122,28 +1187,35 @@ async def old_jobs_menu_handler(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
+
     return OLD_JOBS_MENU
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    register_user(update)
     text = normalize_button(update.message.text)
+
     if text == normalize_button(t(context, "start_btn")):
         return await wake_to_main_menu(update, context)
+
     if text == normalize_button(t(context, "search_btn")):
         return await handle_search(update, context)
+
     if text == normalize_button(t(context, "change_lang_btn")):
         return await open_language_menu(update, context)
+
     if text == normalize_button(t(context, "old_btn")):
         return await open_old_jobs_menu(update, context)
+
     if text == normalize_button(t(context, "help_btn")):
         return await help_command(update, context)
+
     if text == normalize_button(t(context, "cancel_btn")):
         await update.message.reply_text(
             t(context, "cancelled"),
             reply_markup=get_main_menu_keyboard(context),
         )
         return MAIN_MENU
+
     await update.message.reply_text(
         t(context, "press_button"),
         reply_markup=get_main_menu_keyboard(context),
@@ -1154,7 +1226,9 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     init_db()
     cleanup_old_vacancies()
+
     app = ApplicationBuilder().token(TOKEN).build()
+
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -1180,12 +1254,16 @@ def main():
         ],
         allow_reentry=True,
     )
+
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("language", open_language_menu))
+
     webhook_path = TOKEN
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
+
     logger.info("Webhook URL: %s", webhook_url)
+
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
