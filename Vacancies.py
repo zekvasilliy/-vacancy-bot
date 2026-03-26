@@ -1594,123 +1594,64 @@ def parse_glorri() -> List[Vacancy]:
 
 
 def parse_azvak() -> List[Vacancy]:
-
     html_text = fetch_html(SITE_URLS["azvak"])
-
     if not html_text:
-
         return []
 
-
-
     soup = BeautifulSoup(html_text, "html.parser")
-
     vacancies: List[Vacancy] = []
-
     lines = []
 
-
-
     for raw_line in soup.get_text("\n", strip=True).splitlines():
-
         line = clean_title(raw_line)
-
         if line:
-
             lines.append(line)
 
-
-
     link_candidates = []
-
     for a in soup.select("a[href]"):
-
         href = a.get("href") or ""
-
         text = clean_title(a.get_text(" ", strip=True))
-
         if href and text:
-
             link_candidates.append((normalize_text(text), absolute_url("https://azvak.az", href)))
-
-
 
     seen_titles = set()
 
-
-
     for i, line in enumerate(lines):
-
         title = clean_title(line)
 
-
-
         if looks_like_noise(title) or not is_legal_vacancy(title):
-
             continue
-
         if title in seen_titles:
-
             continue
-
-
 
         published_date = None
-
         for j in range(i + 1, min(i + 8, len(lines))):
-
             possible_date = parse_date_loose(lines[j])
-
             if possible_date:
-
                 published_date = possible_date
-
                 break
-
-
 
         matched_url = None
-
         normalized_title = normalize_text(title)
 
-
-
         for link_text, link_url in link_candidates:
-
             if link_text == normalized_title:
-
                 matched_url = link_url
-
                 break
 
-
-
         if not matched_url:
-
             for link_text, link_url in link_candidates:
-
                 if normalized_title in link_text or link_text in normalized_title:
-
                     matched_url = link_url
-
                     break
 
-
-
         if not matched_url:
-
             matched_url = SITE_URLS["azvak"]
 
-
-
         vacancies.append(Vacancy("azvak", title, matched_url, published_date))
-
         seen_titles.add(title)
 
-
-
     logger.info("AZVAK FOUND %s", len(vacancies))
-
     return deduplicate_vacancies(vacancies)
 
 
@@ -2597,3 +2538,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+```
