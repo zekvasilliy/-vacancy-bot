@@ -260,7 +260,7 @@ TEXTS = {
 
             "2. Менять язык\n"
 
-            "3. Показывать архив вакансий по сайтам за последние 2 месяца"
+            "3. Показывать архив вакансий по сайтам за последние 30 дней"
 
         ),
 
@@ -286,7 +286,7 @@ TEXTS = {
 
             "В архиве название вакансии — синяя кликабельная ссылка.\n"
 
-            "Показываются вакансии только за последние 2 месяца."
+            "Показываются вакансии только за последние 30 дней."
 
         ),
 
@@ -296,11 +296,11 @@ TEXTS = {
 
         "search_done": "Поиск завершен. Найдено: {found}\nНовых сохранено: {inserted}\n\n",
 
-        "old_jobs_prompt": "Выбери сайт, чтобы открыть архив вакансий за последние 2 месяца.",
+        "old_jobs_prompt": "Выбери сайт, чтобы открыть архив вакансий за последние 30 дней.",
 
         "empty_recent": "Свежих вакансий пока не найдено.",
 
-        "empty_site": "По сайту {site} вакансий за последние 2 месяца пока нет.",
+        "empty_site": "По сайту {site} вакансий за последние 30 дней пока нет.",
 
         "main_menu": "Главное меню:",
 
@@ -360,7 +360,7 @@ TEXTS = {
 
             "2. Dili dəyişmək\n"
 
-            "3. Son 2 ay üzrə saytlar üzrə vakansiya arxivini göstərmək"
+            "3. Son 30 gün üzrə saytlar üzrə vakansiya arxivini göstərmək"
 
         ),
 
@@ -386,7 +386,7 @@ TEXTS = {
 
             "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir.\n"
 
-            "Yalnız son 2 ayın vakansiyaları göstərilir."
+            "Yalnız son 30 günün vakansiyaları göstərilir."
 
         ),
 
@@ -396,11 +396,11 @@ TEXTS = {
 
         "search_done": "Axtarış tamamlandı. Tapıldı: {found}\nYeni saxlanıldı: {inserted}\n\n",
 
-        "old_jobs_prompt": "Son 2 ay üzrə vakansiya arxivini açmaq üçün saytı seçin.",
+        "old_jobs_prompt": "Son 30 gün üzrə vakansiya arxivini açmaq üçün saytı seçin.",
 
         "empty_recent": "Hələlik yeni vakansiya tapılmadı.",
 
-        "empty_site": "{site} saytı üzrə son 2 ayda vakansiya yoxdur.",
+        "empty_site": "{site} saytı üzrə son 30 gündə vakansiya yoxdur.",
 
         "main_menu": "Əsas menyu:",
 
