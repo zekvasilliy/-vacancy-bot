@@ -617,40 +617,6 @@ def init_db():
 
             )
 
-            cur.execute(
-
-                """
-
-                CREATE TABLE IF NOT EXISTS bot_users (
-
-                    telegram_user_id BIGINT PRIMARY KEY
-
-                )
-
-                """
-
-            )
-
-        conn.commit()
-
-
-
-
-
-def touch_user(user_id: int):
-
-    with get_connection() as conn:
-
-        with conn.cursor() as cur:
-
-            cur.execute(
-
-                "INSERT INTO bot_users (telegram_user_id) VALUES (%s) ON CONFLICT DO NOTHING",
-
-                (user_id,),
-
-            )
-
         conn.commit()
 
 
@@ -2083,10 +2049,6 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if update.effective_user:
-
-        touch_user(update.effective_user.id)
-
     if "lang" not in context.user_data:
 
         await update.message.reply_text(
@@ -2184,10 +2146,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user:
-
-        touch_user(update.effective_user.id)
 
     if "lang" not in context.user_data:
 
