@@ -460,7 +460,7 @@ TEXTS = {
 
             "2. Change language\n"
 
-            "3. Show vacancy archive by website for the last 2 months"
+            "3. Show vacancy archive by website for the last 30 days"
 
         ),
 
@@ -486,7 +486,7 @@ TEXTS = {
 
             "In the archive, the vacancy title is a blue clickable link.\n"
 
-            "Only vacancies from the last 2 months are shown."
+            "Only vacancies from the last 30 days are shown."
 
         ),
 
@@ -496,11 +496,11 @@ TEXTS = {
 
         "search_done": "Search completed. Found: {found}\nNew saved: {inserted}\n\n",
 
-        "old_jobs_prompt": "Choose a website to open the vacancy archive for the last 2 months.",
+        "old_jobs_prompt": "Choose a website to open the vacancy archive for the last 30 days.",
 
         "empty_recent": "No fresh vacancies found yet.",
 
-        "empty_site": "No vacancies found for {site} in the last 2 months.",
+        "empty_site": "No vacancies found for {site} in the last 30 days.",
 
         "main_menu": "Main menu:",
 
@@ -710,7 +710,7 @@ def save_user(user_id: Optional[int]):
 
 def cleanup_old_vacancies():
 
-    border = date.today() - timedelta(days=60)
+    border = date.today() - timedelta(days=30)
 
     with get_connection() as conn:
 
@@ -732,7 +732,7 @@ def cleanup_old_vacancies():
 
 def cleanup_duplicate_vacancies():
 
-    border = date.today() - timedelta(days=60)
+    border = date.today() - timedelta(days=30)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -807,7 +807,7 @@ def save_vacancies(vacancies: List[Vacancy]) -> int:
 
 def get_recent_vacancies(limit: int = 1000) -> List[Dict]:
 
-    border = date.today() - timedelta(days=60)
+    border = date.today() - timedelta(days=30)
 
     with get_connection() as conn:
 
@@ -843,7 +843,7 @@ def get_recent_vacancies(limit: int = 1000) -> List[Dict]:
 
 def get_recent_vacancies_by_site(site: str, limit: int = 1000) -> List[Dict]:
 
-    border = date.today() - timedelta(days=60)
+    border = date.today() - timedelta(days=30)
 
     with get_connection() as conn:
 
@@ -1143,7 +1143,7 @@ def is_fresh_enough(vacancy_date: Optional[date]) -> bool:
 
         return True
 
-    return vacancy_date >= date.today() - timedelta(days=60)
+    return vacancy_date >= date.today() - timedelta(days=30)
 
 
 
