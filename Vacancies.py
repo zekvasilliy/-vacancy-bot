@@ -626,13 +626,39 @@ def init_db():
 
                     user_id BIGINT PRIMARY KEY,
 
-                    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    first_seen TIMESTAMPTZ,
+
+                    last_seen TIMESTAMPTZ
 
                 )
 
                 """
 
             )
+
+            cur.execute("ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS first_seen TIMESTAMPTZ")
+
+            cur.execute("ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ")
+
+            cur.execute(
+
+                """
+
+                UPDATE bot_users
+
+                SET first_seen = COALESCE(first_seen, NOW()),
+
+                    last_seen = COALESCE(last_seen, NOW())
+
+                WHERE first_seen IS NULL OR last_seen IS NULL
+
+                """
+
+            )
+
+            cur.execute("ALTER TABLE bot_users ALTER COLUMN first_seen SET DEFAULT NOW()")
+
+            cur.execute("ALTER TABLE bot_users ALTER COLUMN last_seen SET DEFAULT NOW()")
 
         conn.commit()
 
@@ -644,27 +670,41 @@ def save_user(user_id: Optional[int]):
 
         return
 
-    with get_connection() as conn:
+    try:
 
-        with conn.cursor() as cur:
+        with get_connection() as conn:
 
-            cur.execute(
+            with conn.cursor() as cur:
 
-                """
+                cur.execute(
 
-                INSERT INTO bot_users (user_id)
+                    "UPDATE bot_users SET last_seen = NOW() WHERE user_id = %s",
 
-                VALUES (%s)
+                    (user_id,),
 
-                ON CONFLICT (user_id) DO NOTHING
+                )
 
-                """
+                if cur.rowcount == 0:
 
-                , (user_id,)
+                    cur.execute(
 
-            )
+                        """
 
-        conn.commit()
+                        INSERT INTO bot_users (user_id, first_seen, last_seen)
+
+                        VALUES (%s, NOW(), NOW())
+
+                        """,
+
+                        (user_id,),
+
+                    )
+
+            conn.commit()
+
+    except Exception as exc:
+
+        logger.warning("save_user skipped: %s", exc)
 
 
 
