@@ -545,6 +545,7 @@ TEXTS = {
 
 
 CACHE_TTL = timedelta(minutes=20)
+SEARCH_BUTTON_REGEX = r"^(?:Искать вакансии|Vakansiyaları axtar|Search vacancies)$"
 parsing_lock = asyncio.Lock()
 cache_payload: Optional[Dict] = None
 cache_time: Optional[datetime] = None
@@ -617,9 +618,53 @@ def init_db():
 
             )
 
+            cur.execute(
+
+                """
+
+                CREATE TABLE IF NOT EXISTS bot_users (
+
+                    user_id BIGINT PRIMARY KEY,
+
+                    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+                )
+
+                """
+
+            )
+
         conn.commit()
 
 
+
+def save_user(user_id: Optional[int]):
+
+    if not user_id:
+
+        return
+
+    with get_connection() as conn:
+
+        with conn.cursor() as cur:
+
+            cur.execute(
+
+                """
+
+                INSERT INTO bot_users (user_id)
+
+                VALUES (%s)
+
+                ON CONFLICT (user_id) DO NOTHING
+
+                """
+
+                , (user_id,)
+
+            )
+
+        conn.commit()
 
 
 
@@ -2011,6 +2056,24 @@ def resolve_language_choice(text: str) -> Optional[str]:
     return None
 
 
+
+def resolve_search_button_lang(text: str) -> Optional[str]:
+
+    value = normalize_button(text)
+
+
+
+    for lang in ("ru", "az", "en"):
+
+        if value == normalize_button(TEXTS[lang]["search_btn"]):
+
+            return lang
+
+
+
+    return None
+
+
 def is_cache_fresh() -> bool:
     return cache_payload is not None and cache_time is not None and datetime.utcnow() - cache_time < CACHE_TTL
 
@@ -2049,6 +2112,8 @@ async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    save_user(update.effective_user.id if update.effective_user else None)
+
     if "lang" not in context.user_data:
 
         await update.message.reply_text(
@@ -2078,6 +2143,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    save_user(update.effective_user.id if update.effective_user else None)
 
     selected = resolve_language_choice(update.message.text)
 
@@ -2147,6 +2214,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    save_user(update.effective_user.id if update.effective_user else None)
+
     if "lang" not in context.user_data:
 
         await update.message.reply_text(
@@ -2172,6 +2241,20 @@ async def wake_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
+
+
+
+async def search_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    save_user(update.effective_user.id if update.effective_user else None)
+
+    selected_lang = resolve_search_button_lang(update.message.text)
+
+    if "lang" not in context.user_data and selected_lang:
+
+        context.user_data["lang"] = selected_lang
+
+    return await handle_search(update, context)
 
 
 
@@ -2463,6 +2546,8 @@ def main():
 
             MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
 
+            MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
+
         ],
 
         states={
@@ -2470,6 +2555,8 @@ def main():
             LANG_MENU: [
 
                 MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
+
+                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
 
                 MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language),
 
@@ -2479,6 +2566,8 @@ def main():
 
                 MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
 
+                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
+
                 MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler),
 
             ],
@@ -2486,6 +2575,8 @@ def main():
             OLD_JOBS_MENU: [
 
                 MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
+
+                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
 
                 MessageHandler(filters.TEXT & ~filters.COMMAND, old_jobs_menu_handler),
 
@@ -2498,6 +2589,8 @@ def main():
             CommandHandler("start", start),
 
             MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
+
+            MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
 
         ],
 
