@@ -606,27 +606,19 @@ def save_user(user_id: Optional[int]):
 
                 cur.execute(
 
-                    "UPDATE bot_users SET last_seen = NOW() WHERE user_id = %s",
+                    """
+
+                    INSERT INTO bot_users (user_id, first_seen)
+
+                    VALUES (%s, NOW())
+
+                    ON CONFLICT (user_id) DO NOTHING
+
+                    """,
 
                     (user_id,),
 
                 )
-
-                if cur.rowcount == 0:
-
-                    cur.execute(
-
-                        """
-
-                        INSERT INTO bot_users (user_id, first_seen, last_seen)
-
-                        VALUES (%s, NOW(), NOW())
-
-                        """,
-
-                        (user_id,),
-
-                    )
 
             conn.commit()
 
