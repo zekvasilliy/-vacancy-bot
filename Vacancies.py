@@ -248,19 +248,9 @@ TEXTS = {
 
             "Добро пожаловать в бот для поиска вакансий юриста.\n\n"
 
-            "Этот бот работает по кнопке Start.\n"
+            "Нажмите нужную кнопку ниже и подождите около 1 минуты, пока бот проснется.\n\n"
 
-            "После нажатия Start нужно подождать примерно 1 минуту, пока бот проснется.\n"
-
-            "При каждом новом использовании тоже нужно нажимать Start, чтобы бот проснулся.\n\n"
-
-            "Что умеет бот:\n"
-
-            "1. Искать вакансии\n"
-
-            "2. Менять язык\n"
-
-            "3. Показывать архив вакансий по сайтам за последние 30 дней"
+            "Бот ищет юридические вакансии и хранит архив вакансий по сайтам за последние 30 дней."
 
         ),
 
@@ -268,29 +258,15 @@ TEXTS = {
 
             "Помощь:\n\n"
 
-            "Этот бот работает по кнопке Start.\n"
+            "Нажмите нужную кнопку ниже и подождите около 1 минуты, пока бот проснется.\n\n"
 
-            "После нажатия Start нужно подождать примерно 1 минуту, пока бот проснется.\n"
+            "Бот ищет юридические вакансии и хранит архив вакансий по сайтам за последние 30 дней.\n"
 
-            "При каждом новом использовании нужно снова нажимать Start, чтобы бот проснулся.\n\n"
-
-            "Как пользоваться:\n"
-
-            "1. Нажми Start\n"
-
-            "2. Нажми 'Искать вакансии' для быстрого поиска\n"
-
-            "3. Нажми 'Сменить язык', чтобы переключить язык бота\n"
-
-            "4. Нажми 'Старые вакансии', затем выбери сайт\n\n"
-
-            "В архиве название вакансии — синяя кликабельная ссылка.\n"
-
-            "Показываются вакансии только за последние 30 дней."
+            "В архиве название вакансии — синяя кликабельная ссылка."
 
         ),
 
-        "bot_awake": "Бот проснулся. Ты в главном меню.",
+        "bot_awake": "Бот проснулся. Нажмите нужную кнопку ниже.",
 
         "searching": "Ищу вакансии по всем сайтам. Подождите немного.",
 
@@ -316,7 +292,7 @@ TEXTS = {
 
         "search_busy": "⏳ Другой пользователь уже обновляет вакансии. Попробуй снова через 1–2 минуты.",
 
-        "using_cache": "📋 Показываю свежий кэш вакансий. Обновление было меньше 20 минут назад.\n\n",
+        "using_cache": "📋 Показываю свежий кэш вакансий. Обновление было меньше 1 часа назад.\n\n",
 
         "start_btn": "Start",
 
@@ -348,19 +324,9 @@ TEXTS = {
 
             "Hüquqşünas vakansiyalarını axtaran bota xoş gəlmisiniz.\n\n"
 
-            "Bu bot Start düyməsi ilə işləyir.\n"
+            "Aşağıdakı uyğun düyməni seçin və botun oyanması üçün təxminən 1 dəqiqə gözləyin.\n\n"
 
-            "Start düyməsinə basdıqdan sonra botun oyanması üçün təxminən 1 dəqiqə gözləmək lazımdır.\n"
-
-            "Hər yeni istifadədə də botun oyanması üçün yenidən Start düyməsinə basmaq lazımdır.\n\n"
-
-            "Bot bunları edə bilir:\n"
-
-            "1. Vakansiyaları axtarmaq\n"
-
-            "2. Dili dəyişmək\n"
-
-            "3. Son 30 gün üzrə saytlar üzrə vakansiya arxivini göstərmək"
+            "Bot hüquq üzrə vakansiyaları axtarır və saytlar üzrə son 30 günün vakansiya arxivini saxlayır."
 
         ),
 
@@ -368,29 +334,15 @@ TEXTS = {
 
             "Kömək:\n\n"
 
-            "Bu bot Start düyməsi ilə işləyir.\n"
+            "Aşağıdakı uyğun düyməni seçin və botun oyanması üçün təxminən 1 dəqiqə gözləyin.\n\n"
 
-            "Start düyməsinə basdıqdan sonra botun oyanması üçün təxminən 1 dəqiqə gözləmək lazımdır.\n"
+            "Bot hüquq üzrə vakansiyaları axtarır və saytlar üzrə son 30 günün vakansiya arxivini saxlayır.\n"
 
-            "Hər yeni istifadədə botun oyanması üçün yenidən Start düyməsinə basmaq lazımdır.\n\n"
-
-            "İstifadə qaydası:\n"
-
-            "1. Start düyməsinə basın\n"
-
-            "2. Sürətli axtarış üçün 'Vakansiyaları axtar' düyməsinə basın\n"
-
-            "3. Botun dilini dəyişmək üçün 'Dili dəyiş' düyməsinə basın\n"
-
-            "4. 'Köhnə vakansiyalar' düyməsinə basın, sonra saytı seçin\n\n"
-
-            "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir.\n"
-
-            "Yalnız son 30 günün vakansiyaları göstərilir."
+            "Arxivdə vakansiyanın adı mavi kliklənə bilən keçiddir."
 
         ),
 
-        "bot_awake": "Bot oyandı. Siz əsas menyudasınız.",
+        "bot_awake": "Bot oyandı. Aşağıdakı uyğun düyməni seçin.",
 
         "searching": "Bütün saytlar üzrə vakansiyalar axtarılır. Bir az gözləyin.",
 
@@ -416,7 +368,7 @@ TEXTS = {
 
         "search_busy": "⏳ Başqa istifadəçi artıq vakansiyaları yeniləyir. 1–2 dəqiqədən sonra yenidən cəhd edin.",
 
-        "using_cache": "📋 Sizə vakansiyaların təzə keş versiyası göstərilir. Yenilənmə 20 dəqiqədən az əvvəl olub.\n\n",
+        "using_cache": "📋 Sizə vakansiyaların təzə keş versiyası göstərilir. Yenilənmə 1 saatdan az əvvəl olub.\n\n",
 
         "start_btn": "Start",
 
@@ -448,19 +400,9 @@ TEXTS = {
 
             "Welcome to the lawyer vacancy search bot.\n\n"
 
-            "This bot works with the Start button.\n"
+            "Press the needed button below and wait about 1 minute for the bot to wake up.\n\n"
 
-            "After pressing Start, you need to wait about 1 minute for the bot to wake up.\n"
-
-            "Each time you use the bot again, you should press Start so that the bot wakes up.\n\n"
-
-            "What this bot can do:\n"
-
-            "1. Search vacancies\n"
-
-            "2. Change language\n"
-
-            "3. Show vacancy archive by website for the last 30 days"
+            "The bot searches legal vacancies and keeps a website-based archive for the last 30 days."
 
         ),
 
@@ -468,29 +410,15 @@ TEXTS = {
 
             "Help:\n\n"
 
-            "This bot works with the Start button.\n"
+            "Press the needed button below and wait about 1 minute for the bot to wake up.\n\n"
 
-            "After pressing Start, you need to wait about 1 minute for the bot to wake up.\n"
+            "The bot searches legal vacancies and keeps a website-based archive for the last 30 days.\n"
 
-            "Each time you use the bot again, you should press Start so that the bot wakes up.\n\n"
-
-            "How to use:\n"
-
-            "1. Press Start\n"
-
-            "2. Press 'Search vacancies' for a quick search\n"
-
-            "3. Press 'Change language' to switch the bot language\n"
-
-            "4. Press 'Old vacancies', then choose a website\n\n"
-
-            "In the archive, the vacancy title is a blue clickable link.\n"
-
-            "Only vacancies from the last 30 days are shown."
+            "In the archive, the vacancy title is a blue clickable link."
 
         ),
 
-        "bot_awake": "The bot is awake. You are in the main menu.",
+        "bot_awake": "The bot is awake. Press the needed button below.",
 
         "searching": "Searching vacancies across all websites. Please wait.",
 
@@ -516,7 +444,7 @@ TEXTS = {
 
         "search_busy": "⏳ Another user is already updating vacancies. Please try again in 1–2 minutes.",
 
-        "using_cache": "📋 Showing fresh cached vacancies. The last update was less than 20 minutes ago.\n\n",
+        "using_cache": "📋 Showing fresh cached vacancies. The last update was less than 1 hour ago.\n\n",
 
         "start_btn": "Start",
 
@@ -544,7 +472,7 @@ TEXTS = {
 
 
 
-CACHE_TTL = timedelta(minutes=20)
+CACHE_TTL = timedelta(hours=1)
 SEARCH_BUTTON_REGEX = r"^(?:Искать вакансии|Vakansiyaları axtar|Search vacancies)$"
 parsing_lock = asyncio.Lock()
 cache_payload: Optional[Dict] = None
@@ -1893,8 +1821,6 @@ def get_language_keyboard():
 
         [TEXTS["ru"]["lang_btn_az"], TEXTS["ru"]["lang_btn_ru"], TEXTS["ru"]["lang_btn_en"]],
 
-        [TEXTS["ru"]["start_btn"]],
-
     ]
 
     return ReplyKeyboardMarkup(
@@ -1919,9 +1845,7 @@ def get_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
         [t(context, "search_btn"), t(context, "change_lang_btn")],
 
-        [t(context, "old_btn"), t(context, "help_btn")],
-
-        [t(context, "start_btn"), t(context, "cancel_btn")],
+        [t(context, "old_btn")],
 
     ]
 
@@ -1951,7 +1875,7 @@ def get_old_jobs_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
         ["HelloJob"],
 
-        [t(context, "start_btn"), t(context, "back_btn"), t(context, "cancel_btn")],
+        [t(context, "back_btn")],
 
     ]
 
@@ -2097,7 +2021,7 @@ def resolve_language_choice(text: str) -> Optional[str]:
 
 
 
-def resolve_search_button_lang(text: str) -> Optional[str]:
+def resolve_button_lang(text: str, key: str) -> Optional[str]:
 
     value = normalize_button(text)
 
@@ -2105,13 +2029,20 @@ def resolve_search_button_lang(text: str) -> Optional[str]:
 
     for lang in ("ru", "az", "en"):
 
-        if value == normalize_button(TEXTS[lang]["search_btn"]):
+        if value == normalize_button(TEXTS[lang][key]):
 
             return lang
 
 
 
     return None
+
+
+
+def resolve_search_button_lang(text: str) -> Optional[str]:
+
+    return resolve_button_lang(text, "search_btn")
+
 
 
 def is_cache_fresh() -> bool:
@@ -2132,6 +2063,97 @@ async def send_cached_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 
+
+
+SITE_BUTTON_TO_KEY = {
+    "JobSearch": "jobsearch",
+    "Busy.az": "busy",
+    "Glorri": "glorri",
+    "Azvak": "azvak",
+    "HelloJob": "hellojob",
+}
+
+
+async def send_site_archive(update: Update, context: ContextTypes.DEFAULT_TYPE, site_button: str):
+    site = SITE_BUTTON_TO_KEY[site_button]
+    rows = get_recent_vacancies_by_site(site, limit=1000)
+    body = format_vacancy_lines_html(
+        rows,
+        t(context, "empty_site").format(site=site_button),
+        context,
+    )
+
+    for chunk in split_long_message(body):
+        await update.message.reply_text(
+            chunk,
+            reply_markup=get_old_jobs_keyboard(context),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+    return OLD_JOBS_MENU
+
+
+async def universal_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_user(update.effective_user.id if update.effective_user else None)
+    raw_text = update.message.text or ""
+    text = normalize_button(raw_text)
+
+    selected_lang = resolve_language_choice(raw_text)
+    if selected_lang:
+        context.user_data["lang"] = selected_lang
+        await update.message.reply_text(
+            t(context, "welcome"),
+            reply_markup=get_main_menu_keyboard(context),
+        )
+        return MAIN_MENU
+
+    if "lang" not in context.user_data:
+        inferred_lang = (
+            resolve_button_lang(raw_text, "search_btn")
+            or resolve_button_lang(raw_text, "change_lang_btn")
+            or resolve_button_lang(raw_text, "old_btn")
+            or resolve_button_lang(raw_text, "back_btn")
+        )
+        if inferred_lang:
+            context.user_data["lang"] = inferred_lang
+
+    if text == normalize_button("start"):
+        return await wake_to_main_menu(update, context)
+
+    if any(text == normalize_button(TEXTS[lang]["search_btn"]) for lang in ("ru", "az", "en")):
+        return await handle_search(update, context)
+
+    if any(text == normalize_button(TEXTS[lang]["change_lang_btn"]) for lang in ("ru", "az", "en")):
+        return await open_language_menu(update, context)
+
+    if any(text == normalize_button(TEXTS[lang]["old_btn"]) for lang in ("ru", "az", "en")):
+        return await open_old_jobs_menu(update, context)
+
+    if any(text == normalize_button(TEXTS[lang]["back_btn"]) for lang in ("ru", "az", "en")):
+        await update.message.reply_text(
+            t(context, "main_menu"),
+            reply_markup=get_main_menu_keyboard(context),
+        )
+        return MAIN_MENU
+
+    if raw_text in SITE_BUTTON_TO_KEY:
+        if "lang" not in context.user_data:
+            context.user_data["lang"] = "ru"
+        return await send_site_archive(update, context, raw_text)
+
+    if "lang" not in context.user_data:
+        await update.message.reply_text(
+            TEXTS["en"]["choose_language"],
+            reply_markup=get_language_keyboard(),
+        )
+        return LANG_MENU
+
+    await update.message.reply_text(
+        t(context, "press_button"),
+        reply_markup=get_main_menu_keyboard(context),
+    )
+    return MAIN_MENU
 
 
 async def open_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2584,9 +2606,7 @@ def main():
 
             CommandHandler("start", start),
 
-            MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
-
-            MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, universal_button_router),
 
         ],
 
@@ -2594,31 +2614,19 @@ def main():
 
             LANG_MENU: [
 
-                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
-
-                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
-
-                MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, universal_button_router),
 
             ],
 
             MAIN_MENU: [
 
-                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
-
-                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
-
-                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, universal_button_router),
 
             ],
 
             OLD_JOBS_MENU: [
 
-                MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
-
-                MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
-
-                MessageHandler(filters.TEXT & ~filters.COMMAND, old_jobs_menu_handler),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, universal_button_router),
 
             ],
 
@@ -2628,9 +2636,7 @@ def main():
 
             CommandHandler("start", start),
 
-            MessageHandler(filters.Regex(r"(?i)^start$"), wake_to_main_menu),
-
-            MessageHandler(filters.Regex(SEARCH_BUTTON_REGEX), search_entrypoint),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, universal_button_router),
 
         ],
 
@@ -2642,7 +2648,6 @@ def main():
 
     app.add_handler(conv_handler)
 
-    app.add_handler(CommandHandler("help", help_command))
 
     app.add_handler(CommandHandler("language", open_language_menu))
 
