@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -11,7 +10,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import psycopg
 import requests
@@ -95,7 +94,6 @@ KEYWORDS = [
     "attorney",
     "paralegal",
     "vəkil",
-    # короткие и шумные оставляем в самом конце
     "legal",
     "compliance",
     "hüquq",
@@ -105,7 +103,6 @@ SORTED_KEYWORDS = sorted(KEYWORDS, key=len, reverse=True)
 
 SITE_URLS = {
     "jobsearch": "https://classic.jobsearch.az/vacancies?category=1375",
-    # Busy.az: CDN-страницы дают уже видимые вакансии.
     "busy_professions": [
         "https://cdn.busy.az/professions/huquqsunas",
         "https://cdn.busy.az/professions/huquq-meslehetcisi",
@@ -123,13 +120,11 @@ SITE_URLS = {
         "https://jobs.glorri.com/en?jobFunctions=legal-services",
         "https://jobs.glorri.az/?jobFunctions=legal-services",
     ],
-    # AzVak пробуем с двух страниц, потому что разметка у них скачет.
     "azvak": [
         "https://azvak.az/vezifeler/huquqsunas/134",
         "https://azvak.az/",
     ],
     "hellojob": "https://www.hellojob.az/is-elanlari/huquq",
-    # public job pages only; посты по хэштегам LinkedIn специально не парсим
     "linkedin": [
         "https://az.linkedin.com/jobs/legal-jobs?countryRedirected=1",
         "https://az.linkedin.com/jobs/law-jobs?countryRedirected=1",
@@ -478,7 +473,6 @@ def cleanup_old_vacancies() -> None:
 
 
 def cleanup_duplicate_vacancies() -> None:
-    # Оставляем, чтобы почистить исторические дубли, которые уже могли попасть в БД.
     border = date.today() - timedelta(days=30)
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -794,7 +788,6 @@ def remove_known_meta(text: str) -> str:
     for pattern in junk_patterns:
         text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
 
-    # убираем даты и age-подобные хвосты, но не ломаем сам title
     age_patterns = [
         r"\d+\s*gün(?:\s*əvvəl)?",
         r"\d+\s*days?\s*ago",
@@ -905,7 +898,6 @@ def canonicalize_job_url(site: str, url: str) -> str:
     if site == "linkedin" and vacancy_id and "/jobs/view/" in cleaned_lower:
         return f"linkedin:{vacancy_id}"
 
-    # чистим трекинговые query params
     cleaned = cleaned.split("?", 1)[0]
     return cleaned_lower
 
@@ -1114,7 +1106,6 @@ def parse_glorri() -> List[Vacancy]:
 
             published_date = extract_dates_from_text(raw)
             compact = remove_known_meta(raw)
-            # на Glorri слева обычно title + company, потом через ● location/date/views
             left_part = clean_title(compact.split("●", 1)[0])
             title = extract_title_from_leading_keywords(left_part)
 
@@ -1157,7 +1148,6 @@ def parse_azvak_page(url: str) -> List[Vacancy]:
 
         full_url = absolute_url("https://azvak.az", href)
         vacancy_id = extract_trailing_numeric_id(full_url)
-        # отбрасываем category-like ссылки наподобие .../huquqsunas/134
         if not vacancy_id:
             continue
         try:
@@ -1170,7 +1160,6 @@ def parse_azvak_page(url: str) -> List[Vacancy]:
         if not canonical_url or canonical_url in seen:
             continue
 
-        # title/company/date пробуем достать из контекста карточки
         published_date = None
         company = None
         container = a
@@ -1314,7 +1303,6 @@ def parse_linkedin() -> List[Vacancy]:
                     published_date = extract_dates_from_text(context)
 
                 if company is None:
-                    # на LinkedIn company обычно отдельной строкой в том же контейнере
                     maybe_company = extract_company_after_title(context, title)
                     if maybe_company:
                         company = maybe_company
@@ -1428,10 +1416,14 @@ def get_main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
 
 def get_old_jobs_keyboard(context: ContextTypes.DEFAULT_TYPE):
+    third_row = ["HelloJob"]
+    if ENABLE_LINKEDIN:
+        third_row.append("LinkedIn")
+
     keyboard = [
         ["JobSearch", "Busy.az"],
         ["Glorri", "AzVak"],
-        ["HelloJob"] + (["LinkedIn"] if ENABLE_LINKEDIN else []),
+        third_row,
         [t(context, "back_btn")],
     ]
     return ReplyKeyboardMarkup(
@@ -1533,7 +1525,7 @@ def format_last_refresh_for_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     try:
         dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        dt = dt.astimezone(timezone(timedelta(hours=4)))  # Asia/Baku
+        dt = dt.astimezone(timezone(timedelta(hours=4)))
         value = dt.strftime("%Y-%m-%d %H:%M")
     except Exception:
         value = raw
@@ -1784,7 +1776,6 @@ def run_bot() -> None:
 
     app = build_app()
 
-    # Не светим токен в логах и не используем его как публично логируемую строку.
     webhook_path = os.getenv("WEBHOOK_PATH") or hashlib.sha256(TOKEN.encode("utf-8")).hexdigest()[:32]
     webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{webhook_path}"
 
