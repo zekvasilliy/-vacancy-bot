@@ -1265,8 +1265,8 @@ def parse_hellojob() -> List[Vacancy]:
 
     logger.info("HELLOJOB FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
-    def parse_linkedin() -> List[Vacancy]:
-    if not ENABLE_LINKEDIN:
+def parse_linkedin() -> List[Vacancy]:
+        if not ENABLE_LINKEDIN:
         return []
 
     vacancies: List[Vacancy] = []
