@@ -17,20 +17,16 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install -r requirements_legal_jobs_bot.txt
-          fi
+          pip install -r requirements.txt
 
       - name: Refresh vacancies in Neon
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ENABLE_LINKEDIN: '0'
         run: |
-          python legal_jobs_bot_ready.py --refresh-once
+          python Vacancies.py --refresh-once
