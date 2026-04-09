@@ -1,0 +1,36 @@
+name: refresh-vacancies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install -r requirements_legal_jobs_bot.txt
+          fi
+
+      - name: Refresh vacancies in Neon
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENABLE_LINKEDIN: '0'
+        run: |
+          python legal_jobs_bot_ready.py --refresh-once
