@@ -1129,32 +1129,61 @@ def parse_glorri() -> List[Vacancy]:
     return deduplicate_vacancies(vacancies)
 
 
-def parse_azvak_page(url: str) -> List[Vacancy]:
-    html_text = fetch_html(url)
+def parse_azvak() -> List[Vacancy]:
+    html_text = fetch_html(SITE_URLS["azvak"])
     if not html_text:
         return []
 
     soup = BeautifulSoup(html_text, "html.parser")
+
+    date_re = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+    stop_markers = {
+        "AzVak-ın (azvak.az) Məxfilik siyasəti və Xidmət şərtləri",
+        "Vəzifələr",
+        "Şöbələr",
+        "Şirkətlər",
+        "Rayonlar",
+    }
+    meta_lines = {"PREMİUM", "YENİ", "VIP", "Company Logo", "banner"}
+
+    def business_key(title: str, company: Optional[str], published_date: Optional[date]):
+        return (
+            normalize_text(title),
+            normalize_text(company or ""),
+            published_date.isoformat() if published_date else "",
+        )
+
     vacancies: List[Vacancy] = []
     seen = set()
 
-    for a in soup.select('a[href*="/vakansiyalar/"]'):
+    # 1) Пробуем прямые ссылки на вакансии
+    links = soup.select('a[href*="/vakansiyalar/"]')
+
+    for a in links:
         href = (a.get("href") or "").strip()
         title = clean_title(a.get_text(" ", strip=True))
+
         if not href or not title:
             continue
         if "/vakansiyalar/" not in href:
             continue
+        if looks_like_noise(title) or not is_legal_vacancy(title):
+            continue
 
         full_url = absolute_url("https://azvak.az", href)
-        vacancy_id = extract_trailing_numeric_id(full_url)
-        if not vacancy_id:
+
+        m = re.search(r"/vakansiyalar/[^/]+/(\d+)", full_url)
+        if not m:
             continue
+
         try:
-            if int(vacancy_id) < 1000:
-                continue
+            vacancy_id = int(m.group(1))
         except ValueError:
-            pass
+            continue
+
+        # category-like ссылки режем
+        if vacancy_id < 1000:
+            continue
 
         canonical_url = canonicalize_job_url("azvak", full_url)
         if not canonical_url or canonical_url in seen:
@@ -1162,39 +1191,113 @@ def parse_azvak_page(url: str) -> List[Vacancy]:
 
         published_date = None
         company = None
+
         container = a
         for _ in range(6):
             if not container:
                 break
-            context = clean_title(container.get_text(" ", strip=True))
+
+            context_lines = [
+                clean_title(x)
+                for x in container.get_text("\n", strip=True).splitlines()
+                if clean_title(x)
+            ]
+
             if published_date is None:
-                published_date = extract_dates_from_text(context)
+                for ln in context_lines:
+                    if date_re.match(ln):
+                        published_date = parse_date_loose(ln)
+                        break
+
             if company is None:
-                maybe_company = extract_company_after_title(context, title)
-                if maybe_company:
-                    company = maybe_company
+                for ln in context_lines:
+                    if (
+                        not ln
+                        or ln == title
+                        or date_re.match(ln)
+                        or ln.isdigit()
+                        or ln.upper() in meta_lines
+                    ):
+                        continue
+                    company = ln
+                    break
+
             container = container.parent
 
-        if looks_like_noise(title) or not is_legal_vacancy(title):
+        key = business_key(title, company, published_date)
+        if key in seen:
             continue
 
-        seen.add(canonical_url)
-        vacancies.append(Vacancy("azvak", title, full_url, published_date, company))
+        seen.add(key)
+        vacancies.append(Vacancy("azvak", title, full_url, published_date))
 
-    logger.info("AZVAK PAGE %s FOUND %s", url, len(vacancies))
+    # 2) Fallback по тексту страницы
+    text = soup.get_text("\n", strip=True)
+    lines = [clean_title(x) for x in text.splitlines() if clean_title(x)]
+
+    start_idx = 0
+    for idx, line in enumerate(lines):
+        if line.startswith("Sıralama"):
+            start_idx = idx + 1
+            break
+
+    lines = lines[start_idx:]
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if line in stop_markers:
+            break
+
+        title = line
+
+        if looks_like_noise(title) or not is_legal_vacancy(title):
+            i += 1
+            continue
+
+        company = None
+        published_date = None
+
+        j = i + 1
+        steps = 0
+        while j < len(lines) and steps < 6:
+            cur = lines[j]
+
+            if cur in stop_markers:
+                break
+
+            if cur.upper() in meta_lines:
+                j += 1
+                steps += 1
+                continue
+
+            if cur.isdigit():
+                j += 1
+                steps += 1
+                continue
+
+            if date_re.match(cur):
+                published_date = parse_date_loose(cur)
+                break
+
+            if company is None:
+                company = cur
+
+            j += 1
+            steps += 1
+
+        if published_date:
+            key = business_key(title, company, published_date)
+            if key not in seen:
+                seen.add(key)
+                vacancies.append(Vacancy("azvak", title, SITE_URLS["azvak"], published_date))
+            i = j + 1
+        else:
+            i += 1
+
+    logger.info("AZVAK FOUND %s", len(vacancies))
     return deduplicate_vacancies(vacancies)
-
-
-def parse_azvak() -> List[Vacancy]:
-    items: List[Vacancy] = []
-    for url in SITE_URLS["azvak"]:
-        try:
-            items.extend(parse_azvak_page(url))
-            time.sleep(0.2)
-        except Exception as exc:
-            logger.error("AZVAK parse error for %s: %s", url, exc)
-    logger.info("AZVAK TOTAL FOUND %s", len(items))
-    return deduplicate_vacancies(items)
 
 
 def parse_hellojob() -> List[Vacancy]:
